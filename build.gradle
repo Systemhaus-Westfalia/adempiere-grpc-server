@@ -57,7 +57,7 @@ dependencies {
 	implementation 'com.sun.xml.bind:jaxb-core:3.0.0-M4'
 	implementation 'javax.activation:activation:1.1.1'
 	//	Others
-        implementation 'com.shw:adempiere-shw.shw_libs:1.0.7'
+        implementation 'com.shw:adempiere-shw.shw_libs:3.9.4.001-1.0.8'
 }
 
 configurations.all {
