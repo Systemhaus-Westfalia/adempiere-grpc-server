@@ -73,12 +73,58 @@ service Dictionary {
 	}
 
 	rpc ListIdentifiersColumns(ListIdentifierColumnsRequest) returns (ListIdentifierColumnsResponse) {
-		option (google.api.http) = { get: "/dictionary/identifiers/{table_name}" };
+		option (google.api.http) = {
+			get: "/dictionary/identifiers/{table_name}"
+			additional_bindings: {
+				get: "/dictionary/identifiers/table/{table_name}/{column_name}"
+			}
+			additional_bindings: {
+				get: "/field/identifiers/column/{column_id}"
+			}
+			additional_bindings: {
+				get: "/field/identifiers/field/{field_id}"
+			}
+			additional_bindings: {
+				get: "/field/identifiers/parameter/{process_parameter_id}"
+			}
+			additional_bindings: {
+				get: "/field/identifiers/query-criteria/{browse_field_id}"
+			}
+			additional_bindings: {
+				get: "/dictionary/identifiers/element/{element_id}"
+			}
+			additional_bindings: {
+				get: "/dictionary/identifiers/element/column/{element_column_name}"
+			}
+		};
 	}
 
 	// List Search Info Fields
 	rpc ListSearchFields(ListSearchFieldsRequest) returns (ListSearchFieldsResponse) {
-		option (google.api.http) = { get: "/dictionary/search/{table_name}" };
+		option (google.api.http) = {
+			get: "/dictionary/search/{table_name}"
+			additional_bindings: {
+				get: "/dictionary/search/table/{table_name}/{column_name}"
+			}
+			additional_bindings: {
+				get: "/dictionary/search/column/{column_id}"
+			}
+			additional_bindings: {
+				get: "/dictionary/search/field/{field_id}"
+			}
+			additional_bindings: {
+				get: "/dictionary/search/parameter/{process_parameter_id}"
+			}
+			additional_bindings: {
+				get: "/dictionary/search/query-criteria/{browse_field_id}"
+			}
+			additional_bindings: {
+				get: "/dictionary/search/element/{element_id}"
+			}
+			additional_bindings: {
+				get: "/dictionary/search/element/column/{element_column_name}"
+			}
+		};
 	}
 }
 
@@ -160,12 +206,13 @@ message Tab {
 	string parent_column_name = 29;
 	// Sort attributes
 	bool is_sort_tab = 30;
-	string sort_order_column_name = 31;
-	string sort_yes_no_column_name = 32;
+	optional string sort_order_column_name = 31;
+	optional string sort_yes_no_column_name = 32;
+	optional string filter_column_name = 33;
 	// External Info
-	int32 window_id = 33;
-	int32 parent_tab_id = 34;
-	repeated string context_column_names = 35;
+	int32 window_id = 34;
+	int32 parent_tab_id = 35;
+	repeated string context_column_names = 36;
 	optional Process process = 37;
 	repeated Process processes = 38;
 	// Fields Attributes
@@ -319,7 +366,7 @@ message Process {
 	optional DictionaryEntity form = 13;
 	// Browse
 	int32 browser_id = 14;
-	optional DictionaryEntity browse = 15;
+	optional DictionaryEntity browser = 15;
 	// Workflow
 	int32 workflow_id = 16;
 	optional DictionaryEntity workflow = 17;
@@ -388,7 +435,15 @@ message ListIdentifierColumnsRequest {
 	int32 page_size = 5;
 	string page_token = 6;
 	string search_value = 7;
+	// references
 	string table_name = 8;
+	int32 process_parameter_id = 9;
+	int32 field_id = 10;
+	int32 browse_field_id = 11;
+	int32 column_id = 12;
+	string column_name = 13;
+	int32 element_id = 14;
+	string element_column_name = 15;
 }
 
 message ListIdentifierColumnsResponse {
@@ -414,10 +469,19 @@ message ListSearchFieldsRequest {
 	int32 page_size = 5;
 	string page_token = 6;
 	string search_value = 7;
+	// references
 	string table_name = 8;
+	int32 process_parameter_id = 9;
+	int32 field_id = 10;
+	int32 browse_field_id = 11;
+	int32 column_id = 12;
+	string column_name = 13;
+	int32 element_id = 14;
+	string element_column_name = 15;
 }
 
 message ListSearchFieldsResponse {
-	repeated Field query_fields = 1;
-	repeated SearchColumn table_columns = 2;
+	string table_name = 1;
+	repeated Field query_fields = 2;
+	repeated SearchColumn table_columns = 3;
 }

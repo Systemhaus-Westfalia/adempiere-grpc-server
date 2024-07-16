@@ -85,6 +85,7 @@ import org.compiere.model.MTab;
 import org.compiere.model.MTable;
 import org.compiere.model.MUser;
 import org.compiere.model.PO;
+import org.compiere.model.POAdapter;
 import org.compiere.model.Query;
 import org.compiere.util.CLogger;
 import org.compiere.util.DB;
@@ -104,6 +105,8 @@ import org.spin.backend.grpc.user_interface.CreateChatEntryRequest;
 import org.spin.backend.grpc.user_interface.CreateTabEntityRequest;
 import org.spin.backend.grpc.user_interface.DefaultValue;
 import org.spin.backend.grpc.user_interface.DeletePreferenceRequest;
+import org.spin.backend.grpc.user_interface.ExportBrowserItemsRequest;
+import org.spin.backend.grpc.user_interface.ExportBrowserItemsResponse;
 import org.spin.backend.grpc.user_interface.GetContextInfoValueRequest;
 import org.spin.backend.grpc.user_interface.GetDefaultValueRequest;
 import org.spin.backend.grpc.user_interface.GetPrivateAccessRequest;
@@ -147,6 +150,8 @@ import org.spin.base.util.LookupUtil;
 import org.spin.base.util.RecordUtil;
 import org.spin.base.util.ReferenceInfo;
 import org.spin.base.util.ReferenceUtil;
+import org.spin.dictionary.util.WindowUtil;
+import org.spin.grpc.service.ui.BrowserLogic;
 import org.spin.grpc.service.ui.CalloutLogic;
 import org.spin.grpc.service.ui.UserInterfaceLogic;
 import org.spin.model.MADContextInfo;
@@ -200,6 +205,23 @@ public class UserInterface extends UserInterfaceImplBase {
 	}
 
 
+	@Override
+	public void exportBrowserItems(ExportBrowserItemsRequest request, StreamObserver<ExportBrowserItemsResponse> responseObserver) {
+		try {
+			log.fine("Object List Requested = " + request);
+			ExportBrowserItemsResponse.Builder entityValueList = BrowserLogic.exportBrowserItems(request);
+			responseObserver.onNext(entityValueList.build());
+			responseObserver.onCompleted();
+		} catch (Exception e) {
+			log.severe(e.getLocalizedMessage());
+			e.printStackTrace();
+			responseObserver.onError(Status.INTERNAL
+				.withDescription(e.getLocalizedMessage())
+				.withCause(e)
+				.asRuntimeException()
+			);
+		}
+	}
 
 	@Override
 	public void updateBrowserEntity(UpdateBrowserEntityRequest request, StreamObserver<Entity> responseObserver) {
@@ -293,14 +315,16 @@ public class UserInterface extends UserInterfaceImplBase {
 			int referenceId = column.getAD_Reference_ID();
 
 			Object value = null;
-			if (referenceId > 0) {
-				value = ValueManager.getObjectFromReference(
-					attribute.getValue(),
-					referenceId
-				);
-			}
-			if (value == null) {
-				value = ValueManager.getObjectFromValue(attribute.getValue());
+			if (!attribute.getValue().hasNullValue()) {
+				if (referenceId > 0) {
+					value = ValueManager.getObjectFromReference(
+						attribute.getValue(),
+						referenceId
+					);
+				}
+				if (value == null) {
+					value = ValueManager.getObjectFromValue(attribute.getValue());
+				}
 			}
 			entity.set_ValueOfColumn(columnName, value);
 		});
@@ -882,9 +906,14 @@ public class UserInterface extends UserInterfaceImplBase {
 		if (entity == null) {
 			throw new AdempiereException("@Error@ PO is null");
 		}
+
 		Map<String, Value> attributes = new HashMap<>(request.getAttributes().getFieldsMap());
-		attributes.entrySet().parallelStream().forEach(attribute -> {
-			int referenceId = org.spin.dictionary.util.DictionaryUtil.getReferenceId(entity.get_Table_ID(), attribute.getKey());
+		attributes.entrySet().stream().forEach(attribute -> {
+			String columnName = attribute.getKey();
+			int referenceId = org.spin.dictionary.util.DictionaryUtil.getReferenceId(
+				entity.get_Table_ID(),
+				columnName
+			);
 			Object value = null;
 			if (referenceId > 0) {
 				value = ValueManager.getObjectFromReference(
@@ -895,7 +924,7 @@ public class UserInterface extends UserInterfaceImplBase {
 			if (value == null) {
 				value = ValueManager.getObjectFromValue(attribute.getValue());
 			}
-			entity.set_ValueOfColumn(attribute.getKey(), value);
+			entity.set_ValueOfColumn(columnName, value);
 		});
 		//	Save entity
 		entity.saveEx();
@@ -976,7 +1005,9 @@ public class UserInterface extends UserInterfaceImplBase {
 			throw new AdempiereException("@Error@ @PO@ @NotFound@");
 		}
 		PO currentEntity = entity;
-		attributes.entrySet().parallelStream().forEach(attribute -> {
+		POAdapter adapter = new POAdapter(currentEntity);
+
+		attributes.entrySet().forEach(attribute -> {
 			final String columnName = attribute.getKey();
 			MColumn column = table.getColumn(columnName);
 			if (column == null || column.getAD_Column_ID() <= 0) {
@@ -989,26 +1020,27 @@ public class UserInterface extends UserInterfaceImplBase {
 			}
 			int referenceId = column.getAD_Reference_ID();
 			Object value = null;
-			if (referenceId > 0) {
-				value = ValueManager.getObjectFromReference(
-					attribute.getValue(),
-					referenceId
-				);
-			} 
-			if (value == null) {
-				value = ValueManager.getObjectFromValue(
-					attribute.getValue()
-				);
+			if (!attribute.getValue().hasNullValue()) {
+				if (referenceId > 0) {
+					value = ValueManager.getObjectFromReference(
+						attribute.getValue(),
+						referenceId
+					);
+				} 
+				if (value == null) {
+					value = ValueManager.getObjectFromValue(
+						attribute.getValue()
+					);
+				}
 			}
-			currentEntity.set_ValueOfColumn(columnName, value);
+			adapter.set_ValueNoCheck(columnName, value);
 		});
 		//	Save entity
 		currentEntity.saveEx();
 
-
 		GetTabEntityRequest.Builder getEntityBuilder = GetTabEntityRequest.newBuilder()
 			.setTabId(request.getTabId())
-			.setId(currentEntity.get_ID())
+			.setId(entity.get_ID())
 		;
 
 		Entity.Builder builder = getTabEntity(
@@ -1817,7 +1849,11 @@ public class UserInterface extends UserInterfaceImplBase {
 		// overwrite default value with user value request
 		if (Optional.ofNullable(request.getValue()).isPresent()
 			&& !Util.isEmpty(request.getValue().getStringValue())) {
-			defaultValue = request.getValue().getStringValue();
+			// URL decode to change characteres
+			final String overwriteValue = ValueManager.getDecodeUrl(
+				request.getValue().getStringValue()
+			);
+			defaultValue = overwriteValue;
 		}
 
 		//	Validate SQL
@@ -2226,7 +2262,8 @@ public class UserInterface extends UserInterfaceImplBase {
 			request.getBrowseFieldId(),
 			request.getColumnId(),
 			request.getColumnName(),
-			request.getTableName()
+			request.getTableName(),
+			request.getIsWithoutValidation()
 		);
 		if (reference == null) {
 			throw new AdempiereException("@AD_Reference_ID@ @NotFound@");
@@ -2505,105 +2542,13 @@ public class UserInterface extends UserInterfaceImplBase {
 		//	Add Order By
 		parsedSQL = parsedSQL + orderByClause;
 		//	Return
-		builder = convertBrowserResult(browser, parsedSQL, filterValues);
+		List<Entity> entitiesList = BrowserLogic.convertBrowserResult(browser, parsedSQL, filterValues);
+		builder.addAllRecords(entitiesList);
 		//	Validate page token
 		builder.setNextPageToken(
 			ValueManager.validateNull(nexPageToken)
 		);
 		builder.setRecordCount(count);
-		//	Return
-		return builder;
-	}
-	
-	/**
-	 * Convert SQL to list values
-	 * @param pagePrefix
-	 * @param browser
-	 * @param sql
-	 * @param values
-	 * @return
-	 */
-	private ListBrowserItemsResponse.Builder convertBrowserResult(MBrowse browser, String sql, List<Object> parameters) {
-		PreparedStatement pstmt = null;
-		ResultSet rs = null;
-		ListBrowserItemsResponse.Builder builder = ListBrowserItemsResponse.newBuilder();
-		long recordCount = 0;
-		try {
-			LinkedHashMap<String, MBrowseField> fieldsMap = new LinkedHashMap<>();
-			//	Add field to map
-			for(MBrowseField field: ASPUtil.getInstance().getBrowseFields(browser.getAD_Browse_ID())) {
-				fieldsMap.put(field.getAD_View_Column().getColumnName().toUpperCase(), field);
-			}
-			//	SELECT Key, Value, Name FROM ...
-			pstmt = DB.prepareStatement(sql, null);
-			ParameterUtil.setParametersFromObjectsList(pstmt, parameters);
-
-			MBrowseField fieldKey = browser.getFieldKey();
-			String keyColumnName = null;
-			if (fieldKey != null && fieldKey.get_ID() > 0) {
-				keyColumnName = fieldKey.getAD_View_Column().getColumnName();
-			}
-			keyColumnName = ValueManager.validateNull(keyColumnName);
-
-			//	Get from Query
-			rs = pstmt.executeQuery();
-			while(rs.next()) {
-				Struct.Builder rowValues = Struct.newBuilder();
-				ResultSetMetaData metaData = rs.getMetaData();
-
-				Entity.Builder entityBuilder = Entity.newBuilder();
-				if (!Util.isEmpty(keyColumnName, true) && rs.getObject(keyColumnName) != null) {
-					entityBuilder.setId(
-						rs.getInt(keyColumnName)
-					);
-				}
-				for (int index = 1; index <= metaData.getColumnCount(); index++) {
-					try {
-						String columnName = metaData.getColumnName(index);
-						MBrowseField field = fieldsMap.get(columnName.toUpperCase());
-						//	Display Columns
-						if(field == null) {
-							String displayValue = rs.getString(index);
-							Value.Builder displayValueBuilder = ValueManager.getValueFromString(displayValue);
-
-							rowValues.putFields(
-								columnName,
-								displayValueBuilder.build()
-							);
-							continue;
-						}
-						//	From field
-						String fieldColumnName = field.getAD_View_Column().getColumnName();
-						Object value = rs.getObject(index);
-						Value.Builder valueBuilder = ValueManager.getValueFromReference(
-							value,
-							field.getAD_Reference_ID()
-						);
-						rowValues.putFields(
-							fieldColumnName,
-							valueBuilder.build()
-						);
-					} catch (Exception e) {
-						log.severe(e.getLocalizedMessage());
-					}
-				}
-				//	
-				entityBuilder.setValues(rowValues);
-				builder.addRecords(entityBuilder.build());
-				recordCount++;
-			}
-		} catch (Exception e) {
-			log.severe(e.getLocalizedMessage());
-			e.printStackTrace();
-		} finally {
-			DB.close(rs, pstmt);
-			rs = null;
-			pstmt = null;
-		}
-		//	Set record counts
-		if (builder.getRecordCount() <= 0) {
-			builder.setRecordCount(recordCount);
-		}
 		//	Return
 		return builder;
 	}
@@ -2663,10 +2608,6 @@ public class UserInterface extends UserInterfaceImplBase {
 			if(searchedValue.isPresent()) {
 				field = searchedValue.get();
 			}
-			int tabNo = (tab.getSeqNo() / 10) - 1;
-			if(tabNo < 0) {
-				tabNo = 0;
-			}
 			//	window
 			int windowNo = request.getWindowNo();
 			if(windowNo <= 0) {
@@ -2674,10 +2615,16 @@ public class UserInterface extends UserInterfaceImplBase {
 			}
 
 			// set values on Env.getCtx()
+			Map<String, Integer> displayTypeColumns = WindowUtil.getTabFieldsDisplayType(tab);
 			Map<String, Object> attributes = ValueManager.convertValuesMapToObjects(
-				request.getContextAttributes().getFieldsMap()
+				request.getContextAttributes().getFieldsMap(),
+				displayTypeColumns
 			);
-			ContextManager.setContextWithAttributesFromObjectMap(windowNo, Env.getCtx(), attributes);
+			ContextManager.setContextWithAttributesFromObjectMap(
+				windowNo,
+				Env.getCtx(),
+				attributes
+			);
 
 			//
 			Object oldValue = null;
@@ -2701,23 +2648,36 @@ public class UserInterface extends UserInterfaceImplBase {
 					request.getValue()
 				);
 			}
+
+			// TODO: Correct `tabNo` with get ASP Tabs List and isActive tab
+			int tabNo = (tab.getSeqNo() / 10) - 1;
+			if(tabNo < 0) {
+				tabNo = 0;
+			}
 			ContextManager.setTabContextByObject(Env.getCtx(), windowNo, tabNo, request.getColumnName(), value);
 
 			//	Initial load for callout wrapper
 			GridWindowVO gridWindowVo = GridWindowVO.create(Env.getCtx(), windowNo, tab.getAD_Window_ID());
 			GridWindow gridWindow = new GridWindow(gridWindowVo, true);
+			// gridWindow.initTab(tabNo); // TODO: Set more precise link column
 			GridTabVO gridTabVo = GridTabVO.create(gridWindowVo, tabNo, tab, false, true);
 			GridFieldVO gridFieldVo = GridFieldVO.create(Env.getCtx(), windowNo, tabNo, tab.getAD_Window_ID(), tab.getAD_Tab_ID(), false, field);
 			GridField gridField = new GridField(gridFieldVo);
-			GridTab gridTab = new GridTab(gridTabVo, gridWindow, true);
 			//	Init tab
+			GridTab gridTab = new GridTab(gridTabVo, gridWindow, true);
+			gridTab.setLinkColumnName(null);
 			gridTab.query(false);
 			gridTab.clearSelection();
 			gridTab.dataNew(false);
 
 			//	load values
 			for (Entry<String, Object> attribute : attributes.entrySet()) {
-				gridTab.setValue(attribute.getKey(), attribute.getValue());
+				String columnNameEntity = attribute.getKey();
+				Object valueEntity = attribute.getValue();
+				gridTab.setValue(
+					columnNameEntity,
+					valueEntity
+				);
 			}
 			gridTab.setValue(request.getColumnName(), value);
 
@@ -2729,7 +2689,7 @@ public class UserInterface extends UserInterfaceImplBase {
 			String result = processCallout(windowNo, gridTab, gridField);
 			Struct.Builder contextValues = Struct.newBuilder();
 			Arrays.asList(gridTab.getFields())
-				.parallelStream()
+				.stream()
 				.filter(fieldValue -> {
 					return CalloutLogic.isValidChange(fieldValue);
 				})
@@ -2891,7 +2851,7 @@ public class UserInterface extends UserInterfaceImplBase {
 
 	private ListEntitiesResponse.Builder listTabSequences(ListTabSequencesRequest request) {
 		if (request.getTabId() <= 0) {
-			throw new AdempiereException("@AD_Tab_ID@ @NotFound@");
+			throw new AdempiereException("@FillMandatory@ @AD_Tab_ID@");
 		}
 
 		// Fill context
@@ -2901,12 +2861,11 @@ public class UserInterface extends UserInterfaceImplBase {
 		);
 
 		MTab tab = MTab.get(Env.getCtx(), request.getTabId());
-		;
 		if (tab == null || tab.getAD_Tab_ID() <= 0) {
-			throw new AdempiereException("@AD_Tab_ID@ @No@ @Sequence@");
+			throw new AdempiereException("@AD_Tab_ID@ @NotFound@");
 		}
 		if (!tab.isSortTab()) {
-			throw new AdempiereException("@AD_Tab_ID@ @No@ @Sequence@");
+			throw new AdempiereException("@AD_Tab_ID@ @No@ @Sequence@: " + tab.getName());
 		}
 		String sortColumnName = MColumn.getColumnName(Env.getCtx(), tab.getAD_ColumnSortOrder_ID());
 		String includedColumnName = MColumn.getColumnName(Env.getCtx(), tab.getAD_ColumnSortYesNo_ID());
@@ -2919,23 +2878,43 @@ public class UserInterface extends UserInterfaceImplBase {
 			})
 			.findFirst()
 			.orElse(null);
+		if (keyColumn == null || keyColumn.getAD_Column_ID() <= 0) {
+			throw new AdempiereException("@KeyColumn@ @NotFound@");
+		}
 
-		MColumn parentColumn = columnsList.parallelStream()
-			.filter(column -> {
-				return column.isParent();
-			})
-			.findFirst()
-			.orElse(null);
+		String filterColumnName = request.getFilterColumnName();
+		if (Util.isEmpty(filterColumnName, true)) {
+			MColumn parentColumn = columnsList.parallelStream()
+				.filter(column -> {
+					return column.isParent();
+				})
+				.findFirst()
+				.orElse(null);
+			if (parentColumn != null && parentColumn.getAD_Column_ID() > 0) {
+				filterColumnName = parentColumn.getColumnName();
+			}
+		}
+		if (Util.isEmpty(filterColumnName, true)) {
+			throw new AdempiereException("@Parent_Column_ID@ @NotFound@");
+		}
 
-		int parentRecordId = Env.getContextAsInt(Env.getCtx(), windowNo, parentColumn.getColumnName());
+		int filterRecordId = request.getFilterRecordId();
+		if (filterRecordId <= 0) {
+			// TODO: Support backward, remove in future versions
+			filterRecordId = Env.getContextAsInt(Env.getCtx(), windowNo, filterColumnName);
+		}
+		RecordUtil.validateRecordId(
+			filterRecordId,
+			table.getAccessLevel()
+		);
 
 		Query query = new Query(
 				Env.getCtx(),
 				table.getTableName(),
-				parentColumn.getColumnName() + " = ?",
+				filterColumnName + " = ?",
 				null
 			)
-			.setParameters(parentRecordId)
+			.setParameters(filterRecordId)
 			.setOrderBy(sortColumnName + " ASC")
 		;
 
@@ -3044,7 +3023,7 @@ public class UserInterface extends UserInterfaceImplBase {
 
 		MTable table = MTable.get(Env.getCtx(), tab.getAD_Table_ID());
 		List<MColumn> columnsList = table.getColumnsAsList();
-		MColumn keyColumn = columnsList.parallelStream()
+		MColumn keyColumn = columnsList.stream()
 			.filter(column -> {
 				return column.isKey();
 			})
@@ -3057,9 +3036,10 @@ public class UserInterface extends UserInterfaceImplBase {
 			.setRecordCount(request.getEntitiesList().size());
 
 		Trx.run(transacctionName -> {
-			request.getEntitiesList().parallelStream().forEach(entitySelection -> {
+			request.getEntitiesList().forEach(entitySelection -> {
 				PO entity = RecordUtil.getEntity(
-					Env.getCtx(), table.getTableName(),
+					Env.getCtx(),
+					table.getTableName(),
 					entitySelection.getSelectionId(),
 					transacctionName
 				);
@@ -3068,7 +3048,6 @@ public class UserInterface extends UserInterfaceImplBase {
 				}
 				// set new values
 				entitySelection.getValues().getFieldsMap().entrySet()
-					.parallelStream()
 					.forEach(attribute -> {
 						Object value = ValueManager.getObjectFromValue(attribute.getValue());
 						entity.set_ValueOfColumn(attribute.getKey(), value);
