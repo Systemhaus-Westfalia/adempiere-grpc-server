@@ -78,7 +78,7 @@ import org.spin.backend.grpc.form.payment_allocation.ProcessResponse;
 import org.spin.backend.grpc.form.payment_allocation.TransactionType;
 import org.spin.backend.grpc.form.payment_allocation.PaymentAllocationGrpc.PaymentAllocationImplBase;
 import org.spin.base.util.ReferenceInfo;
-import org.spin.grpc.service.UserInterface;
+import org.spin.grpc.service.field.field_management.FieldManagementLogic;
 import org.spin.service.grpc.util.value.BooleanManager;
 import org.spin.service.grpc.util.value.NumberManager;
 import org.spin.service.grpc.util.value.ValueManager;
@@ -127,7 +127,7 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 			null, null
 		);
 
-		ListLookupItemsResponse.Builder builderList = UserInterface.listLookupItems(
+		ListLookupItemsResponse.Builder builderList = FieldManagementLogic.listLookupItems(
 			reference,
 			request.getContextAttributes(),
 			request.getPageSize(),
@@ -190,7 +190,7 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 			null, null
 		);
 
-		ListLookupItemsResponse.Builder builderList = UserInterface.listLookupItems(
+		ListLookupItemsResponse.Builder builderList = FieldManagementLogic.listLookupItems(
 			reference,
 			request.getContextAttributes(),
 			request.getPageSize(),
@@ -232,8 +232,11 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 	}
 
 	public static MOrg validateAndGetOrganization(int organizationId) {
-		if (organizationId <= 0) {
+		if (organizationId < 0) {
 			throw new AdempiereException("@FillMandatory@ @AD_Org_ID@");
+		}
+		if (organizationId == 0) {
+			throw new AdempiereException("@Org0NotAllowed@");
 		}
 		MOrg organization = new Query(
 			Env.getCtx(),
@@ -287,7 +290,7 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 			null, null
 		);
 
-		ListLookupItemsResponse.Builder builderList = UserInterface.listLookupItems(
+		ListLookupItemsResponse.Builder builderList = FieldManagementLogic.listLookupItems(
 			reference,
 			request.getContextAttributes(),
 			request.getPageSize(),
@@ -389,7 +392,7 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 			null, null
 		);
 
-		ListLookupItemsResponse.Builder builderList = UserInterface.listLookupItems(
+		ListLookupItemsResponse.Builder builderList = FieldManagementLogic.listLookupItems(
 			reference,
 			request.getContextAttributes(),
 			request.getPageSize(),
@@ -810,7 +813,7 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 			null, null
 		);
 
-		ListLookupItemsResponse.Builder builderList = UserInterface.listLookupItems(
+		ListLookupItemsResponse.Builder builderList = FieldManagementLogic.listLookupItems(
 			reference,
 			request.getContextAttributes(),
 			request.getPageSize(),
@@ -882,7 +885,7 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 			null, null
 		);
 
-		ListLookupItemsResponse.Builder builderList = UserInterface.listLookupItems(
+		ListLookupItemsResponse.Builder builderList = FieldManagementLogic.listLookupItems(
 			reference,
 			request.getContextAttributes(),
 			request.getPageSize(),
@@ -1000,6 +1003,10 @@ public class PaymentAllocation extends PaymentAllocationImplBase {
 	) {
 		if (paymentSelection == null || invoiceSelection == null || (paymentSelection.size() + invoiceSelection.size() == 0)) {
 			return "";
+		}
+
+		if (organizationId <= 0) {
+			throw new AdempiereException("@Org0NotAllowed@");
 		}
 
 		final int orderId = 0;

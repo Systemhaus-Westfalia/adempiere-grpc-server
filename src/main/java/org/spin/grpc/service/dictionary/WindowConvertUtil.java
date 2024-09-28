@@ -64,7 +64,6 @@ import org.spin.model.MADFieldCondition;
 import org.spin.model.MADFieldDefinition;
 import org.spin.service.grpc.util.value.NumberManager;
 import org.spin.service.grpc.util.value.ValueManager;
-import org.spin.util.ASPUtil;
 
 public class WindowConvertUtil {
 
@@ -78,19 +77,24 @@ public class WindowConvertUtil {
 		if (window == null) {
 			return Window.newBuilder();
 		}
-		window = ASPUtil.getInstance(context).getWindow(window.getAD_Window_ID());
-		if (window == null) {
-			return Window.newBuilder();
-		}
 
 		// TODO: Remove with fix the issue https://github.com/solop-develop/backend/issues/28
-		DictionaryConvertUtil.translateEntity(window);
+		DictionaryConvertUtil.translateEntity(context, window);
 
 		//	
 		Window.Builder builder = Window.newBuilder()
-			.setId(window.getAD_Window_ID())
+			.setId(
+				ValueManager.validateNull(
+					window.getUUID()
+				)
+			)
 			.setUuid(
-				ValueManager.validateNull(window.getUUID())
+				ValueManager.validateNull(
+					window.getUUID()
+				)
+			)
+			.setInternalId(
+				window.getAD_Window_ID()
 			)
 			.setName(window.getName())
 			.setDescription(
@@ -107,8 +111,10 @@ public class WindowConvertUtil {
 		//	With Tabs
 		if(withTabs) {
 			boolean isShowAcct = MRole.getDefault(context, false).isShowAcct();
-//			List<Tab.Builder> tabListForGroup = new ArrayList<>();
-			List<MTab> tabs = ASPUtil.getInstance(context).getWindowTabs(window.getAD_Window_ID());
+			// List<Tab.Builder> tabListForGroup = new ArrayList<>();
+			List<MTab> tabs = Arrays.asList(
+				window.getTabs(false, null)
+			);
 			if (tabs != null) {
 				for(MTab tab : tabs) {
 					if(tab == null || !tab.isActive()) {
@@ -224,9 +230,10 @@ public class WindowConvertUtil {
 			return Tab.newBuilder();
 		}
 
-		int tabId = tab.getAD_Tab_ID();
-		tab = ASPUtil.getInstance(context).getWindowTab(tab.getAD_Window_ID(), tabId);
+		// TODO: Remove with fix the issue https://github.com/solop-develop/backend/issues/28
+		DictionaryConvertUtil.translateEntity(context, tab);
 
+		int tabId = tab.getAD_Tab_ID();
 		int parentTabId = 0;
 		// root tab has no parent
 		if (tab.getTabLevel() > 0) {
@@ -242,9 +249,18 @@ public class WindowConvertUtil {
 
 		//	create build
 		Tab.Builder builder = Tab.newBuilder()
-			.setId(tab.getAD_Tab_ID())
+			.setId(
+				ValueManager.validateNull(
+					tab.getUUID()
+				)
+			)
 			.setUuid(
-				ValueManager.validateNull(tab.getUUID())
+				ValueManager.validateNull(
+					tab.getUUID()
+				)
+			)
+			.setInternalId(
+				tab.getAD_Tab_ID()
 			)
 			.setName(
 				ValueManager.validateNull(tab.getName())
@@ -378,7 +394,9 @@ public class WindowConvertUtil {
 
 		//	Fields
 		if(withFields) {
-			List<MField> fieldsList = ASPUtil.getInstance(context).getWindowFields(tab.getAD_Tab_ID());
+			List<MField> fieldsList = Arrays.asList(
+				tab.getFields(false, null)
+			);
 			for(MField field : fieldsList) {
 				if (field == null) {
 					continue;
@@ -406,6 +424,9 @@ public class WindowConvertUtil {
 			return Field.newBuilder();
 		}
 
+		// TODO: Remove with fix the issue https://github.com/solop-develop/backend/issues/28
+		DictionaryConvertUtil.translateEntity(context, field);
+
 		// Column reference
 		MColumn column = MColumn.get(context, field.getAD_Column_ID());
 		// M_Element element = new M_Element(context, column.getAD_Element_ID(), null);
@@ -425,9 +446,16 @@ public class WindowConvertUtil {
 		}
 		//	Convert
 		Field.Builder builder = Field.newBuilder()
-			.setId(field.getAD_Field_ID())
+			.setId(
+				ValueManager.validateNull(
+					field.getUUID()
+				)
+			)
 			.setUuid(
 				ValueManager.validateNull(field.getUUID())
+			)
+			.setInternalId(
+				field.getAD_Field_ID()
 			)
 			.setName(
 				ValueManager.validateNull(field.getName())
@@ -605,10 +633,13 @@ public class WindowConvertUtil {
 		}
 
 		int columnId = field.getAD_Column_ID();
-		String parentColumnName = MColumn.getColumnName(field.getCtx(), columnId);
+		final String parentColumnName = MColumn.getColumnName(field.getCtx(), columnId);
 
 		MTab parentTab = MTab.get(field.getCtx(), field.getAD_Tab_ID());
-		List<MTab> tabsList = ASPUtil.getInstance(field.getCtx()).getWindowTabs(parentTab.getAD_Window_ID());
+		MWindow window = MWindow.get(field.getCtx(), parentTab.getAD_Window_ID());
+		List<MTab> tabsList = Arrays.asList(
+			window.getTabs(false, null)
+		);
 		if (tabsList == null || tabsList.isEmpty()) {
 			return depenentFieldsList;
 		}
@@ -618,7 +649,9 @@ public class WindowConvertUtil {
 				return currentTab.isActive() && !currentTab.isTranslationTab() && !currentTab.isSortTab();
 			})
 			.forEach(tab -> {
-				List<MField> fieldsList = ASPUtil.getInstance().getWindowFields(tab.getAD_Tab_ID());
+				List<MField> fieldsList = Arrays.asList(
+					tab.getFields(false, null)
+				);
 				if (fieldsList == null || fieldsList.isEmpty()) {
 					return;
 				}
@@ -638,7 +671,10 @@ public class WindowConvertUtil {
 						}
 						// Dynamic Validation
 						if (currentField.getAD_Val_Rule_ID() > 0) {
-							MValRule validationRule = MValRule.get(currentField.getCtx(), currentField.getAD_Val_Rule_ID());
+							MValRule validationRule = MValRule.get(
+								currentField.getCtx(),
+								currentField.getAD_Val_Rule_ID()
+							);
 							if (ContextManager.isUseParentColumnOnContext(parentColumnName, validationRule.getCode())) {
 								return true;
 							}
@@ -659,7 +695,10 @@ public class WindowConvertUtil {
 						}
 						// Dynamic Validation
 						if (currentColumn.getAD_Val_Rule_ID() > 0) {
-							MValRule validationRule = MValRule.get(currentField.getCtx(), currentColumn.getAD_Val_Rule_ID());
+							MValRule validationRule = MValRule.get(
+								currentField.getCtx(),
+								currentColumn.getAD_Val_Rule_ID()
+							);
 							if (ContextManager.isUseParentColumnOnContext(parentColumnName, validationRule.getCode())) {
 								return true;
 							}
@@ -667,7 +706,29 @@ public class WindowConvertUtil {
 						return false;
 					})
 					.forEach(currentField -> {
+						final String currentColumnName = MColumn.getColumnName(
+							currentField.getCtx(),
+							currentField.getAD_Column_ID()
+						);
 						DependentField.Builder builder = DependentField.newBuilder()
+							.setId(
+								ValueManager.validateNull(
+									currentField.getUUID()
+								)
+							)
+							.setUuid(
+								ValueManager.validateNull(
+									currentField.getUUID()
+								)
+							)
+							.setInternalId(
+								currentField.getAD_Field_ID()
+							)
+							.setColumnName(
+								ValueManager.validateNull(
+									currentColumnName
+								)
+							)
 							.setParentId(
 								tab.getAD_Tab_ID()
 							)
@@ -681,23 +742,7 @@ public class WindowConvertUtil {
 									tab.getName()
 								)
 							)
-							.setId(
-								currentField.getAD_Field_ID()
-							)
-							.setUuid(
-								ValueManager.validateNull(
-									currentField.getUUID()
-								)
-							)
 						;
-
-						String currentColumnName = MColumn.getColumnName(currentField.getCtx(), currentField.getAD_Column_ID());
-						builder.setColumnName(
-							ValueManager.validateNull(
-								currentColumnName
-							)
-						);
-
 						depenentFieldsList.add(builder.build());
 					});
 			});

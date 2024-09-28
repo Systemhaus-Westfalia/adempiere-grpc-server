@@ -20,20 +20,21 @@ option java_package = "org.spin.backend.grpc.inout";
 option java_outer_classname = "ADempiereInOut";
 
 import "google/api/annotations.proto";
-import "google/protobuf/struct.proto";
 
 import "base_data_type.proto";
 
 // Base URL
-// /info/material-management/
+// /fields/in-outs/
 
-package in_out;
+package field.in_out;
 
 // The in-out service definition.
-service InOut {
+service InOutInfoService {
 	// List In-Out Info Request
 	rpc ListInOutInfo(ListInOutInfoRequest) returns (data.ListEntitiesResponse) {
-		option (google.api.http) = { get: "/info/material-management/in-out" };
+		option (google.api.http) = {
+			get: "/fields/in-outs"
+		};
 	}
 }
 

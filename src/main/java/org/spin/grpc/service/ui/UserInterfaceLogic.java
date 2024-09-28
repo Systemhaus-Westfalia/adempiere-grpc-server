@@ -16,16 +16,12 @@
 
 package org.spin.grpc.service.ui;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.adempiere.exceptions.AdempiereException;
-import org.compiere.model.MLookupInfo;
-import org.compiere.model.MRole;
 import org.compiere.model.MTab;
 import org.compiere.model.MTable;
 import org.compiere.model.MTree;
@@ -33,143 +29,19 @@ import org.compiere.model.MTreeNode;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
 import org.compiere.util.Util;
-import org.spin.backend.grpc.common.ListEntitiesResponse;
-import org.spin.backend.grpc.user_interface.ListGeneralSearchRecordsRequest;
 import org.spin.backend.grpc.user_interface.ListTreeNodesRequest;
 import org.spin.backend.grpc.user_interface.ListTreeNodesResponse;
 import org.spin.backend.grpc.user_interface.TreeNode;
 import org.spin.backend.grpc.user_interface.TreeType;
-import org.spin.base.db.QueryUtil;
 import org.spin.base.db.WhereClauseUtil;
 import org.spin.base.util.ContextManager;
 import org.spin.base.util.RecordUtil;
-import org.spin.base.util.ReferenceInfo;
-import org.spin.service.grpc.authentication.SessionManager;
-import org.spin.service.grpc.util.db.CountUtil;
-import org.spin.service.grpc.util.db.LimitUtil;
-import org.spin.service.grpc.util.value.ValueManager;
 
 /**
  * This class was created for add all logic methods for User Interface service
  * @author Edwin Betancourt, EdwinBetanc0urt@outlook.com , https://github.com/EdwinBetanc0urt
  */
 public class UserInterfaceLogic {
-
-	/**
-	 * Get default value base on field, process parameter, browse field or column
-	 * @param request
-	 * @return
-	 */
-	public static ListEntitiesResponse.Builder listGeneralSearchRecords(ListGeneralSearchRecordsRequest request) {
-		MLookupInfo reference = ReferenceInfo.getInfoFromRequest(
-			request.getReferenceId(),
-			request.getFieldId(),
-			request.getProcessParameterId(),
-			request.getBrowseFieldId(),
-			request.getColumnId(),
-			request.getColumnName(),
-			request.getTableName(),
-			request.getIsWithoutValidation()
-		);
-
-		final MTable table = RecordUtil.validateAndGetTable(
-			reference.TableName
-		);
-
-		int windowNo = ThreadLocalRandom.current().nextInt(1, 8996 + 1);
-		ContextManager.setContextWithAttributesFromString(
-			windowNo, Env.getCtx(), request.getContextAttributes()
-		);
-
-		//
-		StringBuilder sql = new StringBuilder(QueryUtil.getTableQueryWithReferences(table));
-		if (request.getIsOnlyActiveRecords()) {
-			String newSQL = WhereClauseUtil.addIsActiveRestriction(reference.TableName, sql.toString());
-			sql = new StringBuilder(newSQL);
-		}
-
-		// add where with access restriction
-		String sqlWithRoleAccess = MRole.getDefault(Env.getCtx(), false)
-			.addAccessSQL(
-				sql.toString(),
-				null,
-				MRole.SQL_FULLYQUALIFIED,
-				MRole.SQL_RO
-			);
-
-		StringBuffer whereClause = new StringBuffer();
-
-		// validation code of field
-		String validationCode = WhereClauseUtil.getWhereRestrictionsWithAlias(
-			table.getTableName(),
-			reference.ValidationCode
-		);
-		String parsedValidationCode = Env.parseContext(Env.getCtx(), windowNo, validationCode, false);
-		if (!Util.isEmpty(reference.ValidationCode, true)) {
-			if (Util.isEmpty(parsedValidationCode, true)) {
-				throw new AdempiereException("@WhereClause@ @Unparseable@");
-			}
-			whereClause.append(" AND ").append(parsedValidationCode);
-		}
-
-		//	For dynamic condition
-		List<Object> params = new ArrayList<>(); // includes on filters criteria
-		String dynamicWhere = WhereClauseUtil.getWhereClauseFromCriteria(
-			request.getFilters(),
-			table.getTableName(),
-			params
-		);
-		if (!Util.isEmpty(dynamicWhere, true)) {
-			//	Add includes first AND
-			whereClause.append(" AND ")
-				.append("(")
-				.append(dynamicWhere)
-				.append(")");
-		}
-
-		sqlWithRoleAccess += whereClause;
-		String parsedSQL = RecordUtil.addSearchValueAndGet(
-			sqlWithRoleAccess,
-			table.getTableName(),
-			request.getSearchValue(),
-			false,
-			params
-		);
-
-		//	Get page and count
-		int pageNumber = LimitUtil.getPageNumber(SessionManager.getSessionUuid(), request.getPageToken());
-		int limit = LimitUtil.getPageSize(request.getPageSize());
-		int offset = (pageNumber - 1) * limit;
-		int count = 0;
-
-		ListEntitiesResponse.Builder builder = ListEntitiesResponse.newBuilder();
-		
-		//	Count records
-		count = CountUtil.countRecords(
-			parsedSQL,
-			table.getTableName(),
-			params
-		);
-		//	Add Row Number
-		parsedSQL = LimitUtil.getQueryWithLimit(parsedSQL, limit, offset);
-		builder = RecordUtil.convertListEntitiesResult(
-			table,
-			parsedSQL,
-			params
-		);
-		//	
-		builder.setRecordCount(count);
-		//	Set page token
-		String nexPageToken = null;
-		if(LimitUtil.isValidNextPageToken(count, offset, limit)) {
-			nexPageToken = LimitUtil.getPagePrefix(SessionManager.getSessionUuid()) + (pageNumber + 1);
-		}
-		builder.setNextPageToken(
-			ValueManager.validateNull(nexPageToken)
-		);
-
-		return builder;
-	}
 
 
 
@@ -187,7 +59,9 @@ public class UserInterfaceLogic {
 		if (request.getTabId() > 0) {
 			MTab tab = MTab.get(context, request.getTabId());
 			if (tab == null || tab.getAD_Tab_ID() <= 0) {
-				throw new AdempiereException("@AD_Tab_ID@ @NotFound@");
+				throw new AdempiereException(
+					"@AD_Tab_ID@ " + request.getTabId() + " @NotFound@"
+				);
 			}
 
 			table = MTable.get(context, tab.getAD_Table_ID());
@@ -197,7 +71,9 @@ public class UserInterfaceLogic {
 			ContextManager.setContextWithAttributesFromStruct(windowNo, context, null);
 			String parsedWhereClause = Env.parseContext(context, windowNo, whereTab, false);
 			if (Util.isEmpty(parsedWhereClause, true) && !Util.isEmpty(whereTab, true)) {
-				throw new AdempiereException("@AD_Tab_ID@ @WhereClause@ @Unparseable@");
+				throw new AdempiereException(
+					"@AD_Tab_ID@ " + tab.getName() + " (" + tab.getAD_Tab_ID() + "), @WhereClause@ @Unparseable@"
+				);
 			}
 			whereClause = parsedWhereClause;
 		} else {
@@ -207,10 +83,14 @@ public class UserInterfaceLogic {
 			);
 		}
 		if (table == null || table.getAD_Table_ID() <= 0) {
-			throw new AdempiereException("@AD_Table_ID@ @NotFound@");
+			throw new AdempiereException(
+				"@AD_Table_ID@ " + request.getTableName() + " @NotFound@"
+			);
 		}
 		if (!MTree.hasTree(table.getAD_Table_ID())) {
-			throw new AdempiereException("@AD_Table_ID@ + @AD_Tree_ID@ @NotFound@");
+			throw new AdempiereException(
+				"@AD_Table_ID@ " + table.getName() + " (" + table.getAD_Table_ID() + "), @AD_Tree_ID@ @NotFound@"
+			);
 		}
 
 		final int clientId = Env.getAD_Client_ID(context);
@@ -235,7 +115,9 @@ public class UserInterfaceLogic {
 			// get current node
 			MTreeNode currentNode = treeNode.findNode(treeNodeId);
 			if (currentNode == null) {
-				throw new AdempiereException("@Node_ID@ @NotFound@");
+				throw new AdempiereException(
+					"@Node_ID@ " + treeNodeId + " @NotFound@"
+				);
 			}
 			childrens = currentNode.children();
 			builder.setRecordCount(currentNode.getChildCount());

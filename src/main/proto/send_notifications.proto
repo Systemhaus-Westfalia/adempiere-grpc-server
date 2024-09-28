@@ -14,53 +14,42 @@
  ************************************************************************************/
 syntax = "proto3";
 
-
 option java_multiple_files = true;
-option java_package = "org.spin.backend.grpc.notice_management";
-option java_outer_classname = "ADempiereNoticeManagement";
+option java_package = "org.spin.backend.grpc.send_notifications";
+option java_outer_classname = "ADempiereSendNotifications";
 
 import "google/api/annotations.proto";
-import "google/protobuf/timestamp.proto";
 
 import "base_data_type.proto";
 
 // Base URL
-// /notice-management/
+// /send-notifications/
 
-package notice_management;
+package send_notifications;
 
-// The Notice Management service definition.
-service NoticeManagement {
-	rpc ListNotices(ListNoticesRequest) returns (ListNoticesResponse) {
+ service SendNotifications {
+	rpc ListUsers(ListUsersRequest) returns (data.ListLookupItemsResponse) {
 		option (google.api.http) = {
-			get: "/notice-management/notices"
-		};
-	}
-	rpc AcknowledgeNotice(AcknowledgeNoticeRequest) returns (AcknowledgeNoticeResponse) {
-		option (google.api.http) = {
-			patch: "/notice-management/notices/{id}/acknowledge"
+			get: "/send-notifications/users"
 		};
 	}
 
-	rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
-		option (google.api.http) = { get: "/notice-management/notices/users" };
-	}
-	rpc DeleteNotices(DeleteNoticesRequest) returns (DeleteNoticesResponse) {
+	rpc ListNotificationsTypes(ListNotificationsTypesRequest) returns (ListNotificationsTypesResponse) {
 		option (google.api.http) = {
-			delete: "/notice-management/notices"
+			get: "/send-notifications/notifications-types"
+		};
+	}
+
+	rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse ) {
+		option (google.api.http) = {
+			post: "/send-notifications/notifications",
+			body: "*"
 		};
 	}
 }
 
-// User Definition
-message User {
-	int32 id = 1;
-	string uuid = 2;
-	string value = 3;
-	string name = 4;
-	string description = 5;
-	string avatar = 6;
-}
+
+// User
 message ListUsersRequest {
 	string filters = 1;
 	string sort_by = 2;
@@ -69,30 +58,17 @@ message ListUsersRequest {
 	int32 page_size = 5;
 	string page_token = 6;
 	string search_value = 7;
-}
-message ListUsersResponse {
-	int64 record_count = 1;
-	repeated User records = 2;
-	string next_page_token = 3;
+	string context_attributes = 8;
 }
 
 
-// notice
-message Notice {
-	int32 id = 1;
-	string uuid = 2;
-	google.protobuf.Timestamp created = 3;
-	string message = 4;
-	User user = 5;
-	string table_name = 6;
-	int32 record_id = 7;
-	string reference = 8;
-	string text_message = 9;
-	string description = 10;
-	bool is_acknowledge = 11;
+// Notification Type
+message NotifcationType {
+	string value = 1;
+	string name = 2;
+	string description = 3;
 }
-
-message ListNoticesRequest {
+message ListNotificationsTypesRequest {
 	string filters = 1;
 	string sort_by = 2;
 	repeated string group_columns = 3;
@@ -100,28 +76,31 @@ message ListNoticesRequest {
 	int32 page_size = 5;
 	string page_token = 6;
 	string search_value = 7;
+	string context_attributes = 8;
 }
-message ListNoticesResponse {
+message ListNotificationsTypesResponse {
 	int64 record_count = 1;
-	repeated Notice records = 2;
+	repeated NotifcationType records = 2;
 	string next_page_token = 3;
 }
 
 
-message DeleteNoticesRequest {
+// Recipient
+message Recipient {
+	int32 contact_id = 1;
+	string account_name = 2;
+}
+
+
+// Send Notification
+message SendNotificationRequest {
 	int32 user_id = 1;
-	int32 keep_log_days = 2;
+	string notification_type = 2;
+	string title = 3;
+	string body = 4;
+	repeated Recipient recipients = 5;
+	repeated string attachments = 6;
 }
-message DeleteNoticesResponse {
-	string summary = 1;
-	repeated data.ProcessInfoLog logs = 10;
-}
-
-
-// Acknowledge Notice
-message AcknowledgeNoticeRequest {
-	int32 id = 1;
-}
-message AcknowledgeNoticeResponse {
-	string message = 1;
+message SendNotificationResponse {
+	int32 notification_id = 1;
 }

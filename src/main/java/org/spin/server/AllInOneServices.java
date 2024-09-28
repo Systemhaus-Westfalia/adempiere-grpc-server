@@ -30,16 +30,16 @@ import org.spin.grpc.service.Dashboarding;
 import org.spin.grpc.service.Enrollment;
 import org.spin.grpc.service.FileManagement;
 import org.spin.grpc.service.GeneralLedger;
-import org.spin.grpc.service.ImportFileLoader;
-import org.spin.grpc.service.InOutInfo;
 import org.spin.grpc.service.LogsInfo;
 import org.spin.grpc.service.MaterialManagement;
 import org.spin.grpc.service.NoticeManagement;
 import org.spin.grpc.service.PaymentPrintExport;
 import org.spin.grpc.service.PointOfSalesForm;
+import org.spin.grpc.service.PreferenceManagement;
 import org.spin.grpc.service.RecordManagement;
 import org.spin.grpc.service.ReportManagement;
 import org.spin.grpc.service.Security;
+import org.spin.grpc.service.SendNotifications;
 import org.spin.grpc.service.TimeControl;
 import org.spin.grpc.service.TimeRecord;
 import org.spin.grpc.service.UpdateManagement;
@@ -51,6 +51,7 @@ import org.spin.grpc.service.core_functionality.CoreFunctionality;
 import org.spin.grpc.service.dictionary.Dictionary;
 import org.spin.grpc.service.field.business_partner.BusinessPartnerInfo;
 import org.spin.grpc.service.field.field_management.FieldManagementService;
+import org.spin.grpc.service.field.in_out.InOutInfoService;
 import org.spin.grpc.service.field.invoice.InvoiceInfoService;
 import org.spin.grpc.service.field.location_address.LocationAddress;
 import org.spin.grpc.service.field.payment.PaymentInfoService;
@@ -61,6 +62,7 @@ import org.spin.grpc.service.form.ExpressReceipt;
 import org.spin.grpc.service.form.ExpressShipment;
 import org.spin.grpc.service.form.PaymentAllocation;
 import org.spin.grpc.service.form.bank_statement_match.BankStatementMatch;
+import org.spin.grpc.service.form.import_file_loader.ImportFileLoader;
 import org.spin.grpc.service.form.issue_management.IssueManagement;
 import org.spin.grpc.service.form.match_po_receipt_invoice.MatchPOReceiptInvoice;
 import org.spin.grpc.service.form.payroll_action_notice.PayrollActionNotice;
@@ -112,18 +114,22 @@ public class AllInOneServices {
 
 
 	/**
-	  * Get SSL / TLS context
-	  * @return
-	  */
-	  private SslContextBuilder getSslContextBuilder() {
-	        SslContextBuilder sslClientContextBuilder = SslContextBuilder.forServer(new File(SetupLoader.getInstance().getServer().getCertificate_chain_file()),
-	                new File(SetupLoader.getInstance().getServer().getPrivate_key_file()));
-	        if (SetupLoader.getInstance().getServer().getTrust_certificate_collection_file() != null) {
-	            sslClientContextBuilder.trustManager(new File(SetupLoader.getInstance().getServer().getTrust_certificate_collection_file()));
-	            sslClientContextBuilder.clientAuth(ClientAuth.REQUIRE);
-	        }
-	        return GrpcSslContexts.configure(sslClientContextBuilder);
-	  }
+	 * Get SSL / TLS context
+	 * @return
+	 */
+	private SslContextBuilder getSslContextBuilder() {
+		SslContextBuilder sslClientContextBuilder = SslContextBuilder.forServer(
+			new File(SetupLoader.getInstance().getServer().getCertificate_chain_file()),
+			new File(SetupLoader.getInstance().getServer().getPrivate_key_file())
+		);
+		if (SetupLoader.getInstance().getServer().getTrust_certificate_collection_file() != null) {
+			sslClientContextBuilder.trustManager(
+				new File(SetupLoader.getInstance().getServer().getTrust_certificate_collection_file())
+			);
+			sslClientContextBuilder.clientAuth(ClientAuth.REQUIRE);
+		}
+		return GrpcSslContexts.configure(sslClientContextBuilder);
+	}
 
 	private void start() throws IOException {
 		//	Start based on provider
@@ -203,14 +209,11 @@ public class AllInOneServices {
 		serverBuilder.addService(new ImportFileLoader());
 		logger.info("Service " + ImportFileLoader.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
 		//	In-Out
-		serverBuilder.addService(new InOutInfo());
-		logger.info("Service " + InOutInfo.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
+		serverBuilder.addService(new InOutInfoService());
+		logger.info("Service " + InOutInfoService.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
 		//	Invoice Field
 		serverBuilder.addService(new InvoiceInfoService());
 		logger.info("Service " + InvoiceInfoService.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
-		//	Order Field
-		serverBuilder.addService(new OrderInfoService());
-		logger.info("Service " + OrderInfoService.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
 		//	Issue Management
 		serverBuilder.addService(new IssueManagement());
 		logger.info("Service " + IssueManagement.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
@@ -229,6 +232,9 @@ public class AllInOneServices {
 		//	Notice Management
 		serverBuilder.addService(new NoticeManagement());
 		logger.info("Service " + NoticeManagement.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
+		//	Order Field
+		serverBuilder.addService(new OrderInfoService());
+		logger.info("Service " + OrderInfoService.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
 		//	Payment
 		serverBuilder.addService(new PaymentInfoService());
 		logger.info("Service " + PaymentInfoService.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
@@ -241,6 +247,9 @@ public class AllInOneServices {
 		//	Payroll Action Notice
 		serverBuilder.addService(new PayrollActionNotice());
 		logger.info("Service " + PayrollActionNotice.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
+		//	Preference Managment
+		serverBuilder.addService(new PreferenceManagement());
+		logger.info("Service " + PreferenceManagement.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
 		//	Product
 		serverBuilder.addService(new ProductInfo());
 		logger.info("Service " + ProductInfo.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
@@ -256,6 +265,9 @@ public class AllInOneServices {
 		//	Security
 		serverBuilder.addService(new Security());
 		logger.info("Service " + Security.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
+		//	Send Notifications
+		serverBuilder.addService(new SendNotifications());
+		logger.info("Service " + SendNotifications.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
 		//	Task Management
 		serverBuilder.addService(new TaskManagement());
 		logger.info("Service " + TaskManagement.class.getName() + " added on " + SetupLoader.getInstance().getServer().getPort());
@@ -292,11 +304,11 @@ public class AllInOneServices {
 			public void run() {
 				// Use stderr here since the logger may have been reset by its JVM shutdown hook.
 				logger.info("*** shutting down gRPC server since JVM is shutting down");
-		    	  AllInOneServices.this.stop();
-		    	logger.info("*** server shut down");
+				AllInOneServices.this.stop();
+				logger.info("*** server shut down");
 			}
 		});
-	  }
+	}
 
 	private void stop() {
 		if (this.server != null) {

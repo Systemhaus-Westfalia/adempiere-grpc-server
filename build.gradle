@@ -58,6 +58,7 @@ dependencies {
 	implementation 'com.sun.xml.bind:jaxb-core:3.0.0-M4'
 	implementation 'javax.activation:activation:1.1.1'
 	//	Others
+	compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
     implementation 'com.shw:adempiere-shw.shw_libs:3.9.4.001-1.1.2'
 
 	// ADempiere Projects with additional features
@@ -69,7 +70,6 @@ configurations.all {
 	resolutionStrategy {
 		// used by aws-java-sdk-core (storefront is joda-time-2.10.4)
 		force("joda-time:joda-time:2.8.1")
-		// force("io.github.adempiere:adempiere-grpc-utils:local-1.0.0")
 	}
 }
 

@@ -12,7 +12,7 @@
  * You should have received a copy of the GNU General Public License                *
  * along with this program. If not, see <https://www.gnu.org/licenses/>.            *
  ************************************************************************************/
-package org.spin.grpc.service;
+package org.spin.grpc.service.field.in_out;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +36,7 @@ import org.spin.service.grpc.util.db.CountUtil;
 import org.spin.service.grpc.util.db.LimitUtil;
 import org.spin.service.grpc.util.value.ValueManager;
 import org.spin.backend.grpc.common.ListEntitiesResponse;
-import org.spin.backend.grpc.inout.InOutGrpc.InOutImplBase;
+import org.spin.backend.grpc.inout.InOutInfoServiceGrpc.InOutInfoServiceImplBase;
 import org.spin.backend.grpc.inout.ListInOutInfoRequest;
 
 import io.grpc.Status;
@@ -46,9 +46,9 @@ import io.grpc.stub.StreamObserver;
  * @author Edwin Betancourt, EdwinBetanc0urt@outlook.com, https://github.com/EdwinBetanc0urt
  * Service for backend of Update Center
  */
-public class InOutInfo extends InOutImplBase {
+public class InOutInfoService extends InOutInfoServiceImplBase {
 	/**	Logger			*/
-	private CLogger log = CLogger.getCLogger(InOutInfo.class);
+	private CLogger log = CLogger.getCLogger(InOutInfoService.class);
 	
 	public String tableName = I_M_InOut.Table_Name;
 
@@ -111,13 +111,18 @@ public class InOutInfo extends InOutImplBase {
 		StringBuffer whereClause = new StringBuffer();
 
 		// validation code of field
-		String validationCode = WhereClauseUtil.getWhereRestrictionsWithAlias(tableName, reference.ValidationCode);
-		String parsedValidationCode = Env.parseContext(Env.getCtx(), windowNo, validationCode, false);
-		if (!Util.isEmpty(reference.ValidationCode, true)) {
-			if (Util.isEmpty(parsedValidationCode, true)) {
-				throw new AdempiereException("@WhereClause@ @Unparseable@");
+		if (!request.getIsWithoutValidation()) {
+			String validationCode = WhereClauseUtil.getWhereRestrictionsWithAlias(
+				this.tableName,
+				reference.ValidationCode
+			);
+			if (!Util.isEmpty(reference.ValidationCode, true)) {
+				String parsedValidationCode = Env.parseContext(Env.getCtx(), windowNo, validationCode, false);
+				if (Util.isEmpty(parsedValidationCode, true)) {
+					throw new AdempiereException("@WhereClause@ @Unparseable@");
+				}
+				whereClause.append(" AND ").append(parsedValidationCode);
 			}
-			whereClause.append(" AND ").append(parsedValidationCode);
 		}
 
 		//	For dynamic condition

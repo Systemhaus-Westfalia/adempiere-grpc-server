@@ -27,7 +27,7 @@ import org.spin.base.db.WhereClauseUtil;
 import org.spin.base.util.ContextManager;
 import org.spin.base.util.RecordUtil;
 import org.spin.base.util.ReferenceInfo;
-import org.spin.grpc.service.UserInterface;
+import org.spin.grpc.service.field.field_management.FieldManagementLogic;
 import org.spin.service.grpc.authentication.SessionManager;
 import org.spin.service.grpc.util.db.CountUtil;
 import org.spin.service.grpc.util.db.LimitUtil;
@@ -67,7 +67,7 @@ public class OrderInfoLogic {
 			whereClause
 		);
 
-		ListLookupItemsResponse.Builder builderList = UserInterface.listLookupItems(
+		ListLookupItemsResponse.Builder builderList = FieldManagementLogic.listLookupItems(
 			reference,
 			null,
 			request.getPageSize(),
@@ -172,10 +172,11 @@ public class OrderInfoLogic {
 			);
 		}
 		// Business Partner
-		if (request.getBusinessPartnerId() > 0) {
+		int businessPartnerId = request.getBusinessPartnerId();
+		if (businessPartnerId > 0) {
 			sql += "AND o.C_BPartner_ID = ? ";
 			filtersList.add(
-				request.getBusinessPartnerId()
+				businessPartnerId
 			);
 		}
 		// Is Sales Transaction
@@ -267,13 +268,19 @@ public class OrderInfoLogic {
 		StringBuffer whereClause = new StringBuffer();
 
 		// validation code of field
-		String validationCode = WhereClauseUtil.getWhereRestrictionsWithAlias("o", reference.ValidationCode);
-		String parsedValidationCode = Env.parseContext(Env.getCtx(), windowNo, validationCode, false);
-		if (!Util.isEmpty(reference.ValidationCode, true)) {
-			if (Util.isEmpty(parsedValidationCode, true)) {
-				throw new AdempiereException("@WhereClause@ @Unparseable@");
+		if (!request.getIsWithoutValidation()) {
+			String validationCode = WhereClauseUtil.getWhereRestrictionsWithAlias(
+				tableName,
+				"o",
+				reference.ValidationCode
+			);
+			if (!Util.isEmpty(reference.ValidationCode, true)) {
+				String parsedValidationCode = Env.parseContext(Env.getCtx(), windowNo, validationCode, false);
+				if (Util.isEmpty(parsedValidationCode, true)) {
+					throw new AdempiereException("@WhereClause@ @Unparseable@");
+				}
+				whereClause.append(" AND ").append(parsedValidationCode);
 			}
-			whereClause.append(" AND ").append(parsedValidationCode);
 		}
 
 		//	For dynamic condition

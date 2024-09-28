@@ -28,6 +28,7 @@ import org.compiere.model.MProcessPara;
 import org.compiere.model.MProcessParaCustom;
 import org.compiere.model.MReportView;
 import org.compiere.model.MValRule;
+import org.compiere.util.Util;
 import org.compiere.wf.MWorkflow;
 import org.spin.backend.grpc.dictionary.DependentField;
 import org.spin.backend.grpc.dictionary.Field;
@@ -38,7 +39,6 @@ import org.spin.base.util.ContextManager;
 import org.spin.base.util.ReferenceUtil;
 import org.spin.dictionary.custom.ProcessParaCustomUtil;
 import org.spin.service.grpc.util.value.ValueManager;
-import org.spin.util.ASPUtil;
 import org.spin.util.AbstractExportFormat;
 import org.spin.util.ReportExportHandler;
 
@@ -66,19 +66,24 @@ public class ProcessConvertUtil {
 		if (process == null) {
 			return Process.newBuilder();
 		}
-		process = ASPUtil.getInstance(context).getProcess(process.getAD_Process_ID());
 
 		// TODO: Remove with fix the issue https://github.com/solop-develop/adempiere-grpc-server/issues/28
-		DictionaryConvertUtil.translateEntity(process);
+		DictionaryConvertUtil.translateEntity(context, process);
 
-		List<MProcessPara> parametersList = ASPUtil.getInstance(context).getProcessParameters(process.getAD_Process_ID());
+		List<MProcessPara> parametersList = process.getParametersAsList();
 
 		Process.Builder builder = Process.newBuilder()
-			.setId(process.getAD_Process_ID())
+			.setId(
+				ValueManager.validateNull(
+					process.getUUID()
+				))
 			.setUuid(
 				ValueManager.validateNull(
 					process.getUUID()
 				)
+			)
+			.setInternalId(
+				process.getAD_Process_ID()
 			)
 			.setCode(
 				ValueManager.validateNull(
@@ -109,43 +114,11 @@ public class ProcessConvertUtil {
 			)
 		;
 
-		if (process.getAD_Browse_ID() > 0) {
-			MBrowse browse = ASPUtil.getInstance(context).getBrowse(process.getAD_Browse_ID());
-			builder.setBrowserId(
-					process.getAD_Browse_ID()
-				)
-				.setBrowser(
-					DictionaryConvertUtil.getDictionaryEntity(
-						browse
-					)
-				)
-			;
-		} else if (process.getAD_Form_ID() > 0) {
-			MForm form = new MForm(context, process.getAD_Workflow_ID(), null);
-			builder.setFormId(
-					process.getAD_Form_ID()
-				)
-				.setForm(
-					DictionaryConvertUtil.getDictionaryEntity(
-						form
-					)
-				)
-			;
-		} else if (process.getAD_Workflow_ID() > 0) {
-			MWorkflow workflow = MWorkflow.get(context, process.getAD_Workflow_ID());
-			builder.setWorkflowId(
-					process.getAD_Workflow_ID()
-				)
-				.setWorkflow(
-					DictionaryConvertUtil.getDictionaryEntity(
-						workflow
-					)
-				)
-			;
-		}
-
 		//	Report Types
 		if(process.isReport()) {
+			builder.setIsProcessBeforeLaunch(
+				!Util.isEmpty(process.getClassname(), true)
+			);
 			if (process.getAD_PrintFormat_ID() > 0) {
 				builder.setPrintFormatId(
 					process.getAD_PrintFormat_ID()
@@ -162,18 +135,58 @@ public class ProcessConvertUtil {
 			for(AbstractExportFormat reportType : exportHandler.getExportFormatList()) {
 				ReportExportType.Builder reportExportType = ReportExportType.newBuilder()
 					.setName(
-						ValueManager.validateNull(reportType.getName())
-					)
-					.setDescription(
-						ValueManager.validateNull(reportType.getName())
+						ValueManager.validateNull(
+							reportType.getName()
+						)
 					)
 					.setType(
-						ValueManager.validateNull(reportType.getExtension())
+						ValueManager.validateNull(
+							reportType.getExtension()
+						)
 					)
 				;
 				builder.addReportExportTypes(reportExportType.build());
 			}
+		} else {
+			if (process.getAD_Browse_ID() > 0) {
+				MBrowse browse = MBrowse.get(
+					context,
+					process.getAD_Browse_ID()
+				);
+				builder.setBrowserId(
+						process.getAD_Browse_ID()
+					)
+					.setBrowser(
+						DictionaryConvertUtil.getDictionaryEntity(
+							browse
+						)
+					)
+				;
+			} else if (process.getAD_Form_ID() > 0) {
+				MForm form = new MForm(context, process.getAD_Workflow_ID(), null);
+				builder.setFormId(
+						process.getAD_Form_ID()
+					)
+					.setForm(
+						DictionaryConvertUtil.getDictionaryEntity(
+							form
+						)
+					)
+				;
+			} else if (process.getAD_Workflow_ID() > 0) {
+				MWorkflow workflow = MWorkflow.get(context, process.getAD_Workflow_ID());
+				builder.setWorkflowId(
+						process.getAD_Workflow_ID()
+					)
+					.setWorkflow(
+						DictionaryConvertUtil.getDictionaryEntity(
+							workflow
+						)
+					)
+				;
+			}
 		}
+
 		//	For parameters
 		if(withParams && parametersList != null && parametersList.size() > 0) {
 			for(MProcessPara parameter : parametersList) {
@@ -211,15 +224,17 @@ public class ProcessConvertUtil {
 			return depenentFieldsList;
 		}
 
-		String parentColumnName = processParameter.getColumnName();
-
-		MProcess process = ASPUtil.getInstance().getProcess(processParameter.getAD_Process_ID());
-		List<MProcessPara> parametersList = ASPUtil.getInstance().getProcessParameters(processParameter.getAD_Process_ID());
+		MProcess process = MProcess.get(
+			processParameter.getCtx(),
+			processParameter.getAD_Process_ID()
+		);
+		List<MProcessPara> parametersList = process.getParametersAsList();
 		if (parametersList == null || parametersList.isEmpty()) {
 			return depenentFieldsList;
 		}
 
-		parametersList.parallelStream()
+		final String parentColumnName = processParameter.getColumnName();
+		parametersList.stream()
 			.filter(currentParameter -> {
 				if (currentParameter == null || !currentParameter.isActive()) {
 					return false;
@@ -232,13 +247,20 @@ public class ProcessConvertUtil {
 				if (ContextManager.isUseParentColumnOnContext(parentColumnName, currentParameter.getDefaultValue())) {
 					return true;
 				}
+				// TODO: Validate range with `_To` suffix
+				if (ContextManager.isUseParentColumnOnContext(parentColumnName, currentParameter.getDefaultValue2())) {
+					return true;
+				}
 				// ReadOnly Logic
 				if (ContextManager.isUseParentColumnOnContext(parentColumnName, currentParameter.getReadOnlyLogic())) {
 					return true;
 				}
 				// Dynamic Validation
 				if (currentParameter.getAD_Val_Rule_ID() > 0) {
-					MValRule validationRule = MValRule.get(currentParameter.getCtx(), currentParameter.getAD_Val_Rule_ID());
+					MValRule validationRule = MValRule.get(
+						currentParameter.getCtx(),
+						currentParameter.getAD_Val_Rule_ID()
+					);
 					if (ContextManager.isUseParentColumnOnContext(parentColumnName, validationRule.getCode())) {
 						return true;
 					}
@@ -246,7 +268,26 @@ public class ProcessConvertUtil {
 				return false;
 			})
 			.forEach(currentParameter -> {
+				final String currentColumnName = currentParameter.getColumnName();
 				DependentField.Builder builder = DependentField.newBuilder()
+					.setId(
+						ValueManager.validateNull(
+							currentParameter.getUUID()
+						)
+					)
+					.setUuid(
+						ValueManager.validateNull(
+							currentParameter.getUUID()
+						)
+					)
+					.setInternalId(
+						currentParameter.getAD_Process_Para_ID()
+					)
+					.setColumnName(
+						ValueManager.validateNull(
+							currentColumnName
+						)
+					)
 					.setParentId(
 						process.getAD_Process_ID()
 					)
@@ -258,19 +299,6 @@ public class ProcessConvertUtil {
 					.setParentName(
 						ValueManager.validateNull(
 							process.getName()
-						)
-					)
-					.setId(
-						currentParameter.getAD_Process_Para_ID()
-					)
-					.setUuid(
-						ValueManager.validateNull(
-							currentParameter.getUUID()
-						)
-					)
-					.setColumnName(
-						ValueManager.validateNull(
-							currentParameter.getColumnName()
 						)
 					)
 				;
@@ -293,13 +321,21 @@ public class ProcessConvertUtil {
 		}
 
 		// TODO: Remove with fix the issue https://github.com/solop-develop/backend/issues/28
-		DictionaryConvertUtil.translateEntity(processParameter);
+		DictionaryConvertUtil.translateEntity(context, processParameter);
 
 		//	Convert
 		Field.Builder builder = Field.newBuilder()
-			.setId(processParameter.getAD_Process_Para_ID())
+			.setId(
+				ValueManager.validateNull(
+					processParameter.getUUID()
+				))
 			.setUuid(
-				ValueManager.validateNull(processParameter.getUUID())
+				ValueManager.validateNull(
+					processParameter.getUUID()
+				)
+			)
+			.setInternalId(
+				processParameter.getAD_Process_Para_ID()
 			)
 			.setName(
 				ValueManager.validateNull(processParameter.getName())

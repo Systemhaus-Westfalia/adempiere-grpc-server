@@ -15,6 +15,7 @@
 package org.spin.base.db;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +34,7 @@ import org.adempiere.model.MViewColumn;
 import org.compiere.model.MColumn;
 import org.compiere.model.MTab;
 import org.compiere.model.MTable;
+import org.compiere.model.MWindow;
 import org.compiere.util.DisplayType;
 import org.compiere.util.Env;
 import org.compiere.util.Util;
@@ -44,7 +46,6 @@ import org.spin.service.grpc.util.db.ParameterUtil;
 import org.spin.service.grpc.util.query.Filter;
 import org.spin.service.grpc.util.query.FilterManager;
 import org.spin.service.grpc.util.value.ValueManager;
-import org.spin.util.ASPUtil;
 
 /**
  * Class for handle SQL Where Clause
@@ -63,16 +64,16 @@ public class WhereClauseUtil {
 	public static String getWhereRestrictionsWithAlias(String tableName, String tableAlias, String dynamicValidation) {
 		String validationCode = getWhereRestrictionsWithAlias(tableAlias, dynamicValidation);
 		if (Util.isEmpty(validationCode, true)) {
-		return "";
+			return "";
 		}
 		if (tableName.equals(tableAlias)) {
-		// ignore replace primary table with alias
-		return validationCode;
+			// ignore replace primary table with alias
+			return validationCode;
 		}
 		final String regexPrimarayTable = "\\b" + tableName + "\\.";
 		String validationWithAlias = validationCode.replaceAll(regexPrimarayTable, tableAlias + ".");
 		if (Util.isEmpty(validationWithAlias, true)) {
-		return "";
+			return "";
 		}
 		return validationWithAlias;
 	}
@@ -194,7 +195,35 @@ public class WhereClauseUtil {
 	 * @return
 	 */
 	public static String getRestrictionByOperator(Filter condition, List<Object> params) {
-		return getRestrictionByOperator(condition, 0, params);
+		return getRestrictionByOperator(null, condition, 0, params);
+	}
+
+	/**
+	 * Get sql restriction by operator
+	 * @param columnName
+	 * @param operatorValue
+	 * @param value
+	 * @param valueTo
+	 * @param valuesList
+	 * @param params
+	 * @return
+	 */
+	public static String getRestrictionByOperator(Filter condition, int displayType, List<Object> params) {
+		return getRestrictionByOperator(null, condition, displayType, params);
+	}
+
+	/**
+	 * Get sql restriction by operator
+	 * @param columnName
+	 * @param operatorValue
+	 * @param value
+	 * @param valueTo
+	 * @param valuesList
+	 * @param params
+	 * @return
+	 */
+	public static String getRestrictionByOperator(String tableAlias, Filter condition, List<Object> params) {
+		return getRestrictionByOperator(tableAlias, condition, 0, params);
 	}
 
 	/**
@@ -204,7 +233,7 @@ public class WhereClauseUtil {
 	 * @param parameters
 	 * @return
 	 */
-	public static String getRestrictionByOperator(Filter condition, int displayType, List<Object> parameters) {
+	public static String getRestrictionByOperator(String tableAlias, Filter condition, int displayType, List<Object> parameters) {
 		String operatorValue = OperatorUtil.EQUAL;
 		if (!Util.isEmpty(condition.getOperator(), true)) {
 			operatorValue = condition.getOperator().toLowerCase();
@@ -212,6 +241,9 @@ public class WhereClauseUtil {
 		String sqlOperator = OperatorUtil.convertOperator(condition.getOperator());
 
 		String columnName = condition.getColumnName();
+		if (!Util.isEmpty(tableAlias, true)) {
+			columnName = tableAlias + "." + columnName;
+		}
 		String sqlValue = "";
 		StringBuilder additionalSQL = new StringBuilder();
 		//	For IN or NOT IN
@@ -347,6 +379,20 @@ public class WhereClauseUtil {
 		return rescriction;
 	}
 
+
+	/**
+	 * Get sql restriction by operator
+	 * @param columnName
+	 * @param operatorValue
+	 * @param value
+	 * @param valueTo
+	 * @param valuesList
+	 * @return
+	 */
+	public static String getRestrictionByOperatorWithoutParameters(Filter condition, int displayType) {
+		return getRestrictionByOperatorWithoutParameters(null, condition, displayType);
+	}
+
 	/**
 	 * Get sql restriction by operator without manage filters
 	 * @param columnName
@@ -354,12 +400,16 @@ public class WhereClauseUtil {
 	 * @param value
 	 * @param valueTo
 	 * @param valuesList
-	 * @param params
 	 * @return
 	 */
-	public static String getRestrictionByOperator(Filter condition, int displayType) {
+	public static String getRestrictionByOperatorWithoutParameters(String tableAlias, Filter condition, int displayType) {
 		String sqlOperator = OperatorUtil.convertOperator(condition.getOperator());
+
 		String columnName = condition.getColumnName();
+		if (!Util.isEmpty(tableAlias, true)) {
+			columnName = tableAlias + "." + columnName;
+		}
+
 		String operatorValue = condition.getOperator();
 		String sqlValue = "";
 		StringBuilder additionalSQL = new StringBuilder();
@@ -572,9 +622,8 @@ public class WhereClauseUtil {
 		}
 		return getWhereClauseFromTab(tab.getAD_Window_ID(), tabId);
 	}
-
 	public static String getWhereClauseFromTab(int windowId, int tabId) {
-		MTab aspTab = ASPUtil.getInstance(Env.getCtx()).getWindowTab(windowId, tabId);
+		MTab aspTab = MTab.get(Env.getCtx(), tabId);
 		if (aspTab == null || aspTab.getAD_Tab_ID() <= 0) {
 			return null;
 		}
@@ -590,7 +639,16 @@ public class WhereClauseUtil {
 	 */
 	public static String getTabWhereClauseFromParentTabs(Properties context, MTab tab, List<MTab> tabs) {
 		if (tabs == null) {
-			tabs = ASPUtil.getInstance(context).getWindowTabs(tab.getAD_Window_ID());
+			MWindow window = MWindow.get(tab.getCtx(), tab.getAD_Window_ID());
+			tabs = Arrays.asList(
+					window.getTabs(false, null)
+				)
+				.stream()
+				.filter(currentTab -> {
+					return currentTab.isActive();
+				})
+				.collect(Collectors.toList())
+			;
 		}
 
 		StringBuffer whereClause = new StringBuffer();
@@ -756,7 +814,7 @@ public class WhereClauseUtil {
 		if (browseId <= 0) {
 			return null;
 		}
-		MBrowse browse = ASPUtil.getInstance().getBrowse(browseId);
+		MBrowse browse = MBrowse.get(Env.getCtx(), browseId);
 		if (browse == null || browse.getAD_Browse_ID() <= 0) {
 			return null;
 		}
@@ -789,7 +847,7 @@ public class WhereClauseUtil {
 		}
 
  		// Add browse field to map
-		List<MBrowseField> browseFieldsList = ASPUtil.getInstance().getBrowseFields(browser.getAD_Browse_ID());
+		List<MBrowseField> browseFieldsList = browser.getFields();
 		HashMap<String, MBrowseField> browseFields = new HashMap<>();
 		for (MBrowseField browseField : browseFieldsList) {
 			browseFields.put(browseField.getAD_View_Column().getColumnName(), browseField);

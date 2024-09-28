@@ -80,7 +80,6 @@ import org.spin.base.util.RecordUtil;
 import org.spin.dictionary.util.DictionaryUtil;
 import org.spin.dictionary.util.ReportUtil;
 import org.spin.service.grpc.util.value.ValueManager;
-import org.spin.util.ASPUtil;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Value;
@@ -144,7 +143,10 @@ public class ReportManagement extends ReportManagementImplBase {
 			throw new AdempiereException("@FillMandatory@ @AD_Process_ID@");
 		}
 		//	Get Process definition
-		MProcess process = ASPUtil.getInstance().getProcess(reportId);
+		MProcess process = MProcess.get(
+			Env.getCtx(),
+			reportId
+		);
 		if (process == null || process.getAD_Process_ID() <= 0) {
 			throw new AdempiereException("@Report@ @NotFound@");
 		}
@@ -273,9 +275,9 @@ public class ReportManagement extends ReportManagementImplBase {
 			);
 		}
 
-		// int reportViewReferenceId = 0;
-		// int printFormatReferenceId = printFormatId;
-		// String tableNameReference = null;
+		int reportViewReferenceId = 0;
+		int printFormatReferenceId = printFormatId;
+		String tableNameReference = null;
 
 		//	Get process instance from identifier
 		if(result.getAD_PInstance_ID() > 0) {
@@ -295,34 +297,37 @@ public class ReportManagement extends ReportManagementImplBase {
 				)
 			);
 
-			// if(instance.getAD_PrintFormat_ID() > 0) {
-			// 	printFormatId = instance.getAD_PrintFormat_ID();
-			// } else if(process.getAD_PrintFormat_ID() > 0) {
-			// 	printFormatId = process.getAD_PrintFormat_ID();
-			// } else if(process.getAD_ReportView_ID() > 0) {
-			// 	reportViewId = process.getAD_ReportView_ID();
-			// }
+			if(instance.getAD_PrintFormat_ID() > 0) {
+				printFormatId = instance.getAD_PrintFormat_ID();
+			} else if(process.getAD_PrintFormat_ID() > 0) {
+				printFormatReferenceId = process.getAD_PrintFormat_ID();
+			} else if(process.getAD_ReportView_ID() > 0) {
+				reportViewId = process.getAD_ReportView_ID();
+			}
 
-			// if (printFormatReferenceId <= 0 && printFormatId > 0) {
-			// 	printFormatReferenceId = printFormatId;
-			// }
-			// //	Get from report view or print format
-			// MPrintFormat printFormat = null;
-			// if(printFormatReferenceId > 0) {
-			// 	printFormat = MPrintFormat.get(Env.getCtx(), printFormatReferenceId, false);
-			// 	tableName = printFormat.getAD_Table().getTableName();
-			// 	if(printFormat.getAD_ReportView_ID() > 0) {
-			// 		reportViewReferenceId = printFormat.getAD_ReportView_ID();
-			// 	}
-			// } else if(reportViewId > 0) {
-			// 	MReportView reportView = MReportView.get(Env.getCtx(), reportViewId);
-			// 	reportViewReferenceId = reportViewId;
-			// 	tableName = reportView.getAD_Table().getTableName();
-			// 	printFormat = MPrintFormat.get(Env.getCtx(), reportViewId, 0);
-			// 	if(printFormat != null) {
-			// 		printFormatReferenceId = printFormat.getAD_PrintFormat_ID();
-			// 	}
-			// }
+			if (printFormatReferenceId <= 0 && printFormatId > 0) {
+				printFormatReferenceId = printFormatId;
+			}
+			//	Get from report view or print format
+			MPrintFormat printFormat = null;
+			if(printFormatReferenceId > 0) {
+				printFormat = MPrintFormat.get(Env.getCtx(), printFormatReferenceId, false);
+				tableNameReference = printFormat.getAD_Table().getTableName();
+				if(printFormat.getAD_ReportView_ID() > 0) {
+					reportViewReferenceId = printFormat.getAD_ReportView_ID();
+				}
+			} else if(reportViewId > 0) {
+				MReportView reportView = MReportView.get(Env.getCtx(), reportViewId);
+				reportViewReferenceId = reportViewId;
+				tableNameReference = reportView.getAD_Table().getTableName();
+				printFormat = MPrintFormat.get(Env.getCtx(), reportViewId, 0);
+				if(printFormat != null) {
+					printFormatReferenceId = printFormat.getAD_PrintFormat_ID();
+				}
+			}
+		}
+		if (Util.isEmpty(tableNameReference, true)) {
+			tableNameReference = tableName;
 		}
 
 		//	
@@ -349,9 +354,9 @@ public class ReportManagement extends ReportManagementImplBase {
 			result,
 			process,
 			reportType,
-			printFormatId,
-			reportViewId,
-			tableName
+			printFormatReferenceId,
+			reportViewReferenceId,
+			tableNameReference
 		);
 
 		return response;
@@ -371,13 +376,35 @@ public class ReportManagement extends ReportManagementImplBase {
 		File reportFile = Optional.ofNullable(processInfo.getReportAsFile()).orElse(processInfo.getPDFReport());
 		if(reportFile != null && reportFile.exists()) {
 			String validFileName = FileUtil.getValidFileName(reportFile.getName());
-			ReportOutput.Builder output = ReportOutput.newBuilder();
-			output.setFileName(ValueManager.validateNull(validFileName))
-				.setName(processInfo.getTitle())
-				.setMimeType(ValueManager.validateNull(MimeType.getMimeType(validFileName)))
-				.setDescription(ValueManager.validateNull(process.getDescription()))
+			ReportOutput.Builder output = ReportOutput.newBuilder()
+				.setId(
+					processInfo.getAD_PInstance_ID()
+				)
+				.setFileName(
+					ValueManager.validateNull(
+						validFileName
+					)
+				)
+				.setName(
+					ValueManager.validateNull(
+						processInfo.getTitle()
+					)
+				)
+				.setMimeType(
+					ValueManager.validateNull(
+						MimeType.getMimeType(
+							validFileName
+						)
+					)
+				)
+				.setDescription(
+					ValueManager.validateNull(
+						process.getDescription()
+					)
+				)
 			;
-			//	Type
+
+			//	Report Type
 			if(Util.isEmpty(reportType, true)) {
 				reportType = processInfo.getReportType();
 			}
@@ -385,7 +412,12 @@ public class ReportManagement extends ReportManagementImplBase {
 					&& !FileUtil.getExtension(validFileName).equals(reportType)) {
 				reportType = FileUtil.getExtension(validFileName);
 			}
-			output.setReportType(processInfo.getReportType());
+			if (Util.isEmpty(reportType, true)) {
+				reportType = ReportUtil.DEFAULT_REPORT_TYPE;
+			}
+			output.setReportType(
+				processInfo.getReportType()
+			);
 
 			ByteString resultFile = ByteString.empty();
 			try {
@@ -452,12 +484,20 @@ public class ReportManagement extends ReportManagementImplBase {
 			throw new AdempiereException("@FillMandatory@ @AD_Process_ID@");
 		}
 		int processId = request.getReportId();
-		MProcess process = ASPUtil.getInstance().getProcess(processId);
+		MProcess process = MProcess.get(
+			Env.getCtx(),
+			processId
+		);
 		if (process == null || process.getAD_Process_ID() <= 0) {
 			throw new AdempiereException("@Report@ @NotFound@");
 		}
 		if (!process.isReport()) {
 			throw new AdempiereException("@WFA.NotReport@");
+		}
+		// Record/Role access
+		boolean isReportAccess = AccessUtil.isProcessAccess(process.getAD_Process_ID());
+		if(!isReportAccess) {
+			throw new AdempiereException("@AccessCannotReport@");
 		}
 
 		if(Util.isEmpty(request.getTableName(), true)) {
@@ -479,42 +519,53 @@ public class ReportManagement extends ReportManagementImplBase {
 
 		//	
 		PrintInfo printInformation = new PrintInfo(request.getReportName(), table.getAD_Table_ID(), 0, 0);
+
+		//	Get Report View
+		MReportView reportView = null;
+		if(request.getReportViewId() > 0) {
+			reportView = new Query(
+				Env.getCtx(),
+				I_AD_ReportView.Table_Name,
+				I_AD_ReportView.COLUMNNAME_AD_ReportView_ID + " = ?",
+				null
+			)
+				.setParameters(request.getReportViewId())
+				.first();
+		}
+
 		//	Get Print Format
 		MPrintFormat printFormat = null;
-		MReportView reportView = null;
-		if(request.getPrintFormatId() > 0) {
-			printFormat = new Query(Env.getCtx(), I_AD_PrintFormat.Table_Name, I_AD_PrintFormat.COLUMNNAME_AD_PrintFormat_ID + " = ?", null)
-					.setParameters(request.getPrintFormatId())
-					.first();
-		}
-		//	Get Report View
-		if(request.getReportViewId() > 0) {
-			reportView = new Query(Env.getCtx(), I_AD_ReportView.Table_Name, I_AD_ReportView.COLUMNNAME_AD_ReportView_ID + " = ?", null)
-					.setParameters(request.getReportViewId())
-					.first();
+		if (request.getPrintFormatId() > 0) {
+			printFormat = new Query(
+				Env.getCtx(),
+				I_AD_PrintFormat.Table_Name,
+				I_AD_PrintFormat.COLUMNNAME_AD_PrintFormat_ID + " = ?",
+				null
+			)
+				.setParameters(request.getPrintFormatId())
+				.first();
 		}
 		//	Get Default
-		if(printFormat == null) {
-			int reportViewId = 0;
-			if(reportView != null) {
-				reportViewId = reportView.getAD_ReportView_ID();
+		if(printFormat == null || printFormat.getAD_PrintFormat_ID() <= 0) {
+			if (reportView != null) {
+				printFormat = MPrintFormat.get(Env.getCtx(), reportView.getAD_ReportView_ID(), table.getAD_Table_ID());
 			}
-			printFormat = MPrintFormat.get(Env.getCtx(), reportViewId, table.getAD_Table_ID());
 		}
 		//	Validate print format
 		if(printFormat == null || printFormat.getAD_PrintFont_ID() <= 0) {
 			throw new AdempiereException("@AD_PrintFormat_ID@ @NotFound@");
 		}
-		if(table.getAD_Table_ID() != printFormat.getAD_Table_ID()) {
+
+		if (table == null || table.getAD_Table_ID() != printFormat.getAD_Table_ID()) {
 			table = MTable.get(Env.getCtx(), printFormat.getAD_Table_ID());
 		}
 
 		//	
-		ReportOutput.Builder builder = ReportOutput.newBuilder();
-		MQuery query = ReportUtil.getReportQueryFromCriteria(process.getAD_Process_ID(), request.getTableName(), request.getFilters());
-		// if(!Util.isEmpty(criteria.getWhereClause(), true)) {
-		// 	query.addRestriction(criteria.getWhereClause());
-		// }
+		MQuery query = ReportUtil.getReportQueryFromCriteria(
+			process.getAD_Process_ID(),
+			request.getTableName(),
+			request.getFilters()
+		);
 
 		//	Run report engine
 		ReportEngine reportEngine = new ReportEngine(Env.getCtx(), printFormat, query, printInformation);
@@ -525,12 +576,28 @@ public class ReportManagement extends ReportManagementImplBase {
 			reportView = MReportView.get(Env.getCtx(), reportEngine.getAD_ReportView_ID());
 		}
 		//	Set Summary
-		reportEngine.setSummary(request.getIsSummary());
+		reportEngine.setSummary(
+			request.getIsSummary()
+		);
+
+		//	Set Report Export Type
+		String reportType = request.getReportType();
+		if (Util.isEmpty(reportType, true)) {
+			reportType = ReportUtil.DEFAULT_REPORT_TYPE;
+		}
+
+		ReportOutput.Builder builder = ReportOutput.newBuilder()
+			.setId(
+				printInformation.getAD_PInstance_ID()
+			)
+			.setReportType(reportType)
+		;
 		//	
-		File reportFile = ReportUtil.createOutput(reportEngine, request.getReportType());
-		if(reportFile != null
-				&& reportFile.exists()) {
-			String validFileName = FileUtil.getValidFileName(reportFile.getName());
+		File reportFile = ReportUtil.createOutput(reportEngine, reportType);
+		if (reportFile != null && reportFile.exists()) {
+			String validFileName = FileUtil.getValidFileName(
+				reportFile.getName()
+			);
 			builder.setFileName(
 					ValueManager.validateNull(validFileName)
 				)
@@ -545,31 +612,35 @@ public class ReportManagement extends ReportManagementImplBase {
 					)
 				)
 			;
+			// Header
 			String headerName = Msg.getMsg(Env.getCtx(), "Report") + ": " + reportEngine.getName() + "  " + Env.getHeader(Env.getCtx(), 0);
 			builder.setHeaderName(
 				ValueManager.validateNull(headerName)
 			);
+			// Footer
 			StringBuffer footerName = new StringBuffer ();
 			footerName.append(Msg.getMsg(Env.getCtx(), "DataCols")).append("=")
 				.append(reportEngine.getColumnCount())
 				.append(", ").append(Msg.getMsg(Env.getCtx(), "DataRows")).append("=")
-				.append(reportEngine.getRowCount());
+				.append(reportEngine.getRowCount())
+			;
 			builder.setFooterName(
 				ValueManager.validateNull(
 					footerName.toString()
 				)
 			);
-			//	Type
-			builder.setReportType(request.getReportType());
 			ByteString resultFile = ByteString.readFrom(new FileInputStream(reportFile));
-			if(request.getReportType().endsWith("html")
-					|| request.getReportType().endsWith("txt")) {
+			if (reportType.endsWith("html") || reportType.endsWith("txt")) {
 				builder.setOutputBytes(resultFile);
 			}
 			if(reportView != null) {
-				builder.setReportViewId(reportView.getAD_ReportView_ID());
+				builder.setReportViewId(
+					reportView.getAD_ReportView_ID()
+				);
 			}
-			builder.setPrintFormatId(printFormat.getAD_PrintFormat_ID())
+			builder.setPrintFormatId(
+					printFormat.getAD_PrintFormat_ID()
+				)
 				.setTableName(
 					ValueManager.validateNull(
 						table.getTableName()
@@ -618,23 +689,41 @@ public class ReportManagement extends ReportManagementImplBase {
 				&& request.getReportViewId() <= 0) {
 			throw new AdempiereException("@TableName@ / @AD_Process_ID@ / @AD_ReportView_ID@ @NotFound@");
 		}
-		String whereClause = null;
+		String whereClause = "1=2";
 		List<Object> parameters = new ArrayList<>();
 		//	For Table Name
-		if(!Util.isEmpty(request.getTableName())) {
+		if(!Util.isEmpty(request.getTableName(), true)) {
 			MTable table = MTable.get(Env.getCtx(), request.getTableName());
+			if (table == null || table.getAD_Table_ID() <= 0) {
+				throw new AdempiereException("@TableName@ @NotFound@");
+			}
 			whereClause = "AD_Table_ID = ?";
 			parameters.add(table.getAD_Table_ID());
 		} else if(request.getReportId() > 0) {
-			whereClause = "EXISTS(SELECT 1 FROM AD_Process p WHERE p.AD_Process_ID = ? AND (p.AD_PrintFormat_ID = AD_PrintFormat.AD_PrintFormat_ID OR p.AD_ReportView_ID = AD_PrintFormat.AD_ReportView_ID))";
+			whereClause = "EXISTS("
+				+ "SELECT 1 FROM AD_Process AS p "
+				+ "WHERE p.AD_Process_ID = ? "
+				+ "AND (p.AD_PrintFormat_ID = AD_PrintFormat.AD_PrintFormat_ID "
+				+ "OR p.AD_ReportView_ID = AD_PrintFormat.AD_ReportView_ID))"
+			;
 			parameters.add(request.getReportId());
 		} else if(request.getReportViewId() > 0) {
-			MReportView reportView = new Query(Env.getCtx(), I_AD_ReportView.Table_Name, I_AD_ReportView.COLUMNNAME_AD_ReportView_ID + " = ?", null)
+			MReportView reportView = new Query(
+				Env.getCtx(),
+				I_AD_ReportView.Table_Name,
+				I_AD_ReportView.COLUMNNAME_AD_ReportView_ID + " = ?",
+				null
+			)
 				.setParameters(request.getReportViewId())
-				.first();
+				.first()
+			;
+			if (reportView != null && reportView.getAD_ReportView_ID() > 0) {
+				throw new AdempiereException("@AD_ReportView_ID@ @NotFound@");
+			}
 			whereClause = "AD_ReportView_ID = ?";
-			parameters.add(reportView.getUUID());
+			parameters.add(reportView.getAD_ReportView_ID());
 		}
+
 		//	Get List
 		Query query = new Query(
 			Env.getCtx(),
@@ -656,7 +745,14 @@ public class ReportManagement extends ReportManagementImplBase {
 				MPrintFormat printFormat = MPrintFormat.get(Env.getCtx(), printFormatId, false);
 
 				PrintFormat.Builder printFormatBuilder = PrintFormat.newBuilder()
-					.setId(printFormat.getAD_PrintFormat_ID())
+					.setId(
+						printFormat.getAD_PrintFormat_ID()
+					)
+					.setUuid(
+						ValueManager.validateNull(
+							printFormat.getUUID()
+						)
+					)
 					.setName(
 						ValueManager.validateNull(
 							printFormat.getName()
@@ -667,16 +763,23 @@ public class ReportManagement extends ReportManagementImplBase {
 							printFormat.getDescription()
 						)
 					)
-					.setIsDefault(printFormat.isDefault())
-				;
-				MTable table = MTable.get(Env.getCtx(), printFormat.getAD_Table_ID());
-				printFormatBuilder.setTableName(
-					ValueManager.validateNull(
-						table.getTableName()
+					.setIsDefault(
+						printFormat.isDefault()
 					)
-				);
-				if(printFormat.getAD_ReportView_ID() != 0) {
-					printFormatBuilder.setReportViewId(printFormat.getAD_ReportView_ID());
+				;
+
+				if (printFormat.getAD_Table_ID() > 0) {
+					MTable table = MTable.get(Env.getCtx(), printFormat.getAD_Table_ID());
+					printFormatBuilder.setTableName(
+						ValueManager.validateNull(
+							table.getTableName()
+						)
+					);
+				}
+				if(printFormat.getAD_ReportView_ID() > 0) {
+					printFormatBuilder.setReportViewId(
+						printFormat.getAD_ReportView_ID()
+					);
 				}
 				//	add
 				builder.addPrintFormats(printFormatBuilder);
@@ -728,7 +831,7 @@ public class ReportManagement extends ReportManagementImplBase {
 			whereClause = "AD_Table_ID = ?";
 			parameters.add(table.getAD_Table_ID());
 		} else if(request.getReportId() > 0) {
-			whereClause = "EXISTS(SELECT 1 FROM AD_Process p WHERE p.AD_Process_ID = ? AND p.AD_ReportView_ID = AD_ReportView.AD_ReportView_ID)";
+			whereClause = "EXISTS(SELECT 1 FROM AD_Process AS p WHERE p.AD_Process_ID = ? AND p.AD_ReportView_ID = AD_ReportView.AD_ReportView_ID)";
 			parameters.add(request.getReportId());
 		} else {
 			throw new AdempiereException("@TableName@ / @AD_Process_ID@ @NotFound@");
@@ -793,7 +896,14 @@ public class ReportManagement extends ReportManagementImplBase {
 				}
 
 				ReportView.Builder reportViewBuilder = ReportView.newBuilder()
-					.setId(reportView.getAD_ReportView_ID())
+					.setId(
+						reportView.getAD_ReportView_ID()
+					)
+					.setUuid(
+						ValueManager.validateNull(
+							reportView.getUUID()
+						)
+					)
 					.setName(
 						ValueManager.validateNull(name)
 					)
@@ -801,12 +911,15 @@ public class ReportManagement extends ReportManagementImplBase {
 						ValueManager.validateNull(description)
 					)
 				;
-				MTable table = MTable.get(context, reportView.getAD_Table_ID());
-				reportViewBuilder.setTableName(
-					ValueManager.validateNull(
-						table.getTableName()
-					)
-				);
+
+				if (reportView.getAD_ReportView_ID() > 0) {
+					MTable table = MTable.get(context, reportView.getAD_Table_ID());
+					reportViewBuilder.setTableName(
+						ValueManager.validateNull(
+							table.getTableName()
+						)
+					);
+				}
 				//	add
 				builder.addReportViews(reportViewBuilder);
 			});

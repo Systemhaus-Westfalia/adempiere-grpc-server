@@ -43,7 +43,6 @@ import org.spin.base.util.ReferenceUtil;
 import org.spin.dictionary.custom.BrowseFieldCustomUtil;
 import org.spin.service.grpc.util.db.OrderByUtil;
 import org.spin.service.grpc.util.value.ValueManager;
-import org.spin.util.ASPUtil;
 
 public class BrowseConverUtil {
 
@@ -59,14 +58,22 @@ public class BrowseConverUtil {
 		}
 
 		// TODO: Remove with fix the issue https://github.com/solop-develop/backend/issues/28
-		DictionaryConvertUtil.translateEntity(browser);
+		DictionaryConvertUtil.translateEntity(context, browser);
 
 		String query = QueryUtil.getBrowserQueryWithReferences(browser);
 		String orderByClause = OrderByUtil.getBrowseOrderBy(browser);
 		Browser.Builder builder = Browser.newBuilder()
-			.setId(browser.getAD_Browse_ID())
+			.setId(
+				ValueManager.validateNull(
+					browser.getUUID()
+				))
 			.setUuid(
-				ValueManager.validateNull(browser.getUUID())
+				ValueManager.validateNull(
+					browser.getUUID()
+				)
+			)
+			.setInternalId(
+				browser.getAD_Browse_ID()
 			)
 			.setCode(
 				ValueManager.validateNull(
@@ -115,7 +122,10 @@ public class BrowseConverUtil {
 		}
 		//	Window Reference
 		if(browser.getAD_Window_ID() > 0) {
-			MWindow window = ASPUtil.getInstance(context).getWindow(browser.getAD_Window_ID());
+			MWindow window = MWindow.get(
+				context,
+				browser.getAD_Window_ID()
+			);
 			DictionaryEntity.Builder windowBuilder = DictionaryConvertUtil.getDictionaryEntity(
 				window
 			);
@@ -123,7 +133,10 @@ public class BrowseConverUtil {
 		}
 		//	Process Reference
 		if(browser.getAD_Process_ID() > 0) {
-			MProcess process = ASPUtil.getInstance(context).getProcess(browser.getAD_Process_ID());
+			MProcess process = MProcess.get(
+				context,
+				browser.getAD_Process_ID()
+			);
 			DictionaryEntity.Builder processBuilder = DictionaryConvertUtil.getDictionaryEntity(
 				process
 			);
@@ -131,7 +144,7 @@ public class BrowseConverUtil {
 		}
 		//	For parameters
 		if(withFields) {
-			List<MBrowseField> browseFields = ASPUtil.getInstance(context).getBrowseFields(browser.getAD_Browse_ID());
+			List<MBrowseField> browseFields = browser.getFields();
 			for(MBrowseField field : browseFields) {
 				if (field == null) {
 					continue;
@@ -163,13 +176,21 @@ public class BrowseConverUtil {
 		}
 
 		// TODO: Remove with fix the issue https://github.com/solop-develop/backend/issues/28
-		DictionaryConvertUtil.translateEntity(browseField);
+		DictionaryConvertUtil.translateEntity(context, browseField);
 
 		//	Convert
 		Field.Builder builder = Field.newBuilder()
-			.setId(browseField.getAD_Browse_Field_ID())
+			.setId(
+				ValueManager.validateNull(
+					browseField.getUUID()
+				))
 			.setUuid(
-				ValueManager.validateNull(browseField.getUUID())
+				ValueManager.validateNull(
+					browseField.getUUID()
+				)
+			)
+			.setInternalId(
+				browseField.getAD_Browse_Field_ID()
 			)
 			.setName(
 				ValueManager.validateNull(browseField.getName())
@@ -307,8 +328,12 @@ public class BrowseConverUtil {
 			return depenentFieldsList;
 		}
 
-		MViewColumn viewColumn = MViewColumn.getById(browseField.getCtx(), browseField.getAD_View_Column_ID(), null);
-		String parentColumnName = viewColumn.getColumnName();
+		MViewColumn viewColumn = MViewColumn.getById(
+			browseField.getCtx(),
+			browseField.getAD_View_Column_ID(),
+			null
+		);
+		final String parentColumnName = viewColumn.getColumnName();
 
 		String elementName = null;
 		if(viewColumn.getAD_Column_ID() != 0) {
@@ -318,10 +343,13 @@ public class BrowseConverUtil {
 		if(Util.isEmpty(elementName, true)) {
 			elementName = browseField.getAD_Element().getColumnName();
 		}
-		String parentElementName = elementName;
+		final String parentElementName = elementName;
 
-		MBrowse browse = ASPUtil.getInstance().getBrowse(browseField.getAD_Browse_ID());
-		List<MBrowseField> browseFieldsList = ASPUtil.getInstance().getBrowseFields(browseField.getAD_Browse_ID());
+		MBrowse browse = MBrowse.get(
+			browseField.getCtx(),
+			browseField.getAD_Browse_ID()
+		);
+		List<MBrowseField> browseFieldsList = browse.getFields();
 		if (browseFieldsList == null || browseFieldsList.isEmpty()) {
 			return depenentFieldsList;
 		}
@@ -342,6 +370,7 @@ public class BrowseConverUtil {
 					return true;
 				}
 				// Default Value 2
+				// TODO: Validate range with `_To` suffix
 				if (ContextManager.isUseParentColumnOnContext(parentColumnName, currentBrowseField.getDefaultValue2())
 					|| ContextManager.isUseParentColumnOnContext(parentElementName, currentBrowseField.getDefaultValue2())) {
 					return true;
@@ -353,7 +382,10 @@ public class BrowseConverUtil {
 				}
 				// Dynamic Validation
 				if (currentBrowseField.getAD_Val_Rule_ID() > 0) {
-					MValRule validationRule = MValRule.get(currentBrowseField.getCtx(), currentBrowseField.getAD_Val_Rule_ID());
+					MValRule validationRule = MValRule.get(
+						currentBrowseField.getCtx(),
+						currentBrowseField.getAD_Val_Rule_ID()
+					);
 					if (ContextManager.isUseParentColumnOnContext(parentColumnName, validationRule.getCode())
 						|| ContextManager.isUseParentColumnOnContext(parentElementName, validationRule.getCode())) {
 						return true;
@@ -362,7 +394,29 @@ public class BrowseConverUtil {
 				return false;
 			})
 			.forEach(currentBrowseField -> {
+				MViewColumn currentViewColumn = MViewColumn.getById(
+					currentBrowseField.getCtx(),
+					currentBrowseField.getAD_View_Column_ID(),
+					null
+				);
+				final String currentColumnName = currentViewColumn.getColumnName();
 				DependentField.Builder builder = DependentField.newBuilder()
+					.setId(
+						ValueManager.validateNull(
+							currentBrowseField.getUUID()
+						)
+					)
+					.setUuid(
+						ValueManager.validateNull(
+							currentBrowseField.getUUID()
+						)
+					)
+					.setInternalId(
+						currentBrowseField.getAD_Browse_Field_ID()
+					)
+					.setColumnName(
+						currentColumnName
+					)
 					.setParentId(
 						browse.getAD_Browse_ID()
 					)
@@ -376,19 +430,7 @@ public class BrowseConverUtil {
 							browse.getName()
 						)
 					)
-					.setId(
-						currentBrowseField.getAD_Browse_Field_ID()
-					)
-					.setUuid(
-						ValueManager.validateNull(
-							currentBrowseField.getUUID()
-						)
-					)
 				;
-
-				MViewColumn currentViewColumn = MViewColumn.getById(currentBrowseField.getCtx(), currentBrowseField.getAD_View_Column_ID(), null);
-				builder.setColumnName(currentViewColumn.getColumnName());
-
 				depenentFieldsList.add(builder.build());
 			});
 
