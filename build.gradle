@@ -63,7 +63,7 @@ dependencies {
 
 	// ADempiere Projects with additional features
 	//	ADempiere gRPC Utils Base (https://central.sonatype.com/artifact/io.github.adempiere/adempiere-grpc-utils)
-	implementation "${baseGroupId}:adempiere-grpc-utils:1.5.1"
+	implementation "${baseGroupId}:adempiere-grpc-utils:1.4.2"
 }
 
 configurations.all {
