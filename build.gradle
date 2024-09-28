@@ -59,11 +59,11 @@ dependencies {
 	implementation 'javax.activation:activation:1.1.1'
 	//	Others
 	compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
-    implementation 'com.shw:adempiere-shw.shw_libs:3.9.4.001-1.1.2'
+    implementation 'com.shw:adempiere-shw.shw_libs:3.9.4.001-1.1.4'
 
 	// ADempiere Projects with additional features
 	//	ADempiere gRPC Utils Base (https://central.sonatype.com/artifact/io.github.adempiere/adempiere-grpc-utils)
-	implementation "${baseGroupId}:adempiere-grpc-utils:1.4.2"
+	implementation "${baseGroupId}:adempiere-grpc-utils:1.5.1"
 }
 
 configurations.all {
