@@ -147,7 +147,7 @@ configurations.all {
 }
 
 protobuf {
-    protoc {
+	protoc {
 		artifact = "com.google.protobuf:protoc:${protobufVersion}"
     }
     plugins {
