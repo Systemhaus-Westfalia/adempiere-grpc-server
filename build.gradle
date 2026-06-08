@@ -123,7 +123,7 @@ dependencies {
 
 	//	Others
 	compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
-    implementation 'com.shw:adempiere-shw.shw_libs:3.9.4.001-1.1.60'
+    implementation 'com.shw:adempiere-shw.shw_libs:3.9.4.001-1.1.61'
 
 	// Groovy ScriptEngine support (JSR-223) — required for AD_Rule scripts with groovy: prefix; needed since Java 17
 	implementation 'org.codehaus.groovy:groovy:3.0.22'
