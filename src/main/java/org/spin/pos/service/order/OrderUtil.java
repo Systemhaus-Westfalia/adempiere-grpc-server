@@ -146,10 +146,14 @@ public class OrderUtil {
 			orderLine.setC_UOM_ID(unitOfMeasureId);
 		}
 		int targetUomId = orderLine.getC_UOM_ID();
-		if(uomChanging) {
+		// Recompute QtyOrdered whenever qty or UOM changes so a quantity-only update
+		// does not leave QtyOrdered unconverted (setQty sets both fields to the same value).
+		if(quantity != null || uomChanging) {
 			BigDecimal quantityEntered = orderLine.getQtyEntered();
 			BigDecimal convertedQuantity = MUOMConversion.convertProductFrom(orderLine.getCtx(), orderLine.getM_Product_ID(), targetUomId, quantityEntered);
 			orderLine.setQtyOrdered(convertedQuantity != null ? convertedQuantity : quantityEntered);
+		}
+		if(uomChanging) {
 			// Use same methodology as CalloutOrder
 			// to avoid precision loss from reversing intermediate rounded UOM prices.
 			MOrder order = (MOrder) orderLine.getC_Order();
@@ -202,10 +206,14 @@ public class OrderUtil {
 			orderLine.setC_UOM_ID(unitOfMeasureId);
 		}
 		int targetUomId = orderLine.getC_UOM_ID();
-		if(uomChanging) {
+		// Recompute QtyOrdered whenever qty or UOM changes so a quantity-only update
+		// does not leave QtyOrdered unconverted (setQty sets both fields to the same value).
+		if(quantity != null || uomChanging) {
 			BigDecimal quantityEntered = orderLine.getQtyEntered();
 			BigDecimal convertedQuantity = MUOMConversion.convertProductFrom(orderLine.getCtx(), orderLine.getM_Product_ID(), targetUomId, quantityEntered);
 			orderLine.setQtyOrdered(convertedQuantity != null ? convertedQuantity : quantityEntered);
+		}
+		if(uomChanging) {
 			BigDecimal currentFactor = MUOMConversion.convertProductFrom(orderLine.getCtx(), orderLine.getM_Product_ID(), currentUomId, BigDecimal.ONE);
 			if(currentFactor != null && currentFactor.signum() > 0 && currentFactor.compareTo(BigDecimal.ONE) != 0) {
 				savedPriceActual = savedPriceActual.divide(currentFactor, 10, java.math.RoundingMode.HALF_UP);
