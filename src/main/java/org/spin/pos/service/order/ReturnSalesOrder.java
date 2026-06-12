@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.adempiere.core.domains.models.I_C_Order;
 import org.adempiere.exceptions.AdempiereException;
 import org.compiere.model.MInOut;
+import org.compiere.model.MDocType;
 import org.compiere.model.MOrder;
 import org.compiere.model.MOrderLine;
 import org.compiere.model.MPOS;
@@ -70,6 +71,17 @@ public class ReturnSalesOrder {
 				.setParameters(sourceOrderId)
 				.first();
 		if(returnOrder != null) {
+			//	Auto-fix stale draft if it was created with the wrong document type
+			if(!returnOrder.isReturnOrder()) {
+				int targetDocumentTypeId = RMAUtil.getReturnDocumentTypeId(sourceOrder.getC_POS_ID(), pos.getC_POS_ID(), sourceOrder.getC_DocTypeTarget_ID());
+				if(targetDocumentTypeId != 0) {
+					returnOrder.setC_DocTypeTarget_ID(targetDocumentTypeId);
+				} else {
+					returnOrder.setC_DocTypeTarget_ID(MDocType.getDocTypeBaseOnSubType(sourceOrder.getAD_Org_ID(),
+							MDocType.DOCBASETYPE_SalesOrder, MDocType.DOCSUBTYPESO_ReturnMaterial));
+				}
+				returnOrder.saveEx();
+			}
 			return returnOrder;
 		}
 		AtomicReference<MOrder> orderReference = new AtomicReference<MOrder>();

@@ -145,16 +145,16 @@ public class RMAUtil {
 		returnOrder.setPosted (false);
 		returnOrder.setProcessed (false);
 		returnOrder.setAD_Org_ID(sourceOrder.getAD_Org_ID());
-		returnOrder.saveEx(sourceOrder.get_TrxName());
+		//	Determine correct return document type before saving to avoid wrong type being persisted
 		int targetDocumentTypeId = RMAUtil.getReturnDocumentTypeId(sourceOrder.getC_POS_ID(), pos.getC_POS_ID(), sourceOrder.getC_DocTypeTarget_ID());
-		//	Set Document base for return
 		if(targetDocumentTypeId != 0) {
-        	returnOrder.setC_DocTypeTarget_ID(targetDocumentTypeId);
-        } else {
-        	returnOrder.setC_DocTypeTarget_ID(MDocType.getDocTypeBaseOnSubType(sourceOrder.getAD_Org_ID(), 
-            		MDocType.DOCBASETYPE_SalesOrder , MDocType.DOCSUBTYPESO_ReturnMaterial));
-    	}
-        //	Set references
+			returnOrder.setC_DocTypeTarget_ID(targetDocumentTypeId);
+		} else {
+			returnOrder.setC_DocTypeTarget_ID(MDocType.getDocTypeBaseOnSubType(sourceOrder.getAD_Org_ID(),
+					MDocType.DOCBASETYPE_SalesOrder , MDocType.DOCSUBTYPESO_ReturnMaterial));
+		}
+		returnOrder.saveEx(transactionName);
+		//	Set references
 		returnOrder.setC_POS_ID(pos.getC_POS_ID());
 		returnOrder.setC_BPartner_ID(sourceOrder.getC_BPartner_ID());
 		returnOrder.set_ValueOfColumn(ColumnsAdded.COLUMNNAME_ECA14_Source_Order_ID, sourceOrder.getC_Order_ID());

@@ -463,7 +463,7 @@ public class ConvertUtil {
 				order.getC_Order_ID()
 			)
 			.setSourceOrderId(
-				order.getRef_Order_ID()
+				order.get_ValueAsInt(ColumnsAdded.COLUMNNAME_ECA14_Source_Order_ID)
 			)
 			.setDocumentType(
 				CoreFunctionalityConvert.convertDocumentType(
